@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* FitTrack Light Mode — crisp white with electric teal accents */
+    --background: 0.97 0.005 240;
+    --foreground: 0.14 0.02 250;
+    --card: 1 0 0;
+    --card-foreground: 0.14 0.02 250;
+    --popover: 1 0 0;
+    --popover-foreground: 0.14 0.02 250;
+    --primary: 0.62 0.19 155;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.93 0.01 240;
+    --secondary-foreground: 0.14 0.02 250;
+    --muted: 0.93 0.01 240;
+    --muted-foreground: 0.48 0.02 240;
+    --accent: 0.55 0.22 162;
+    --accent-foreground: 1 0 0;
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 1 0 0;
+    --border: 0.88 0.01 240;
+    --input: 0.88 0.01 240;
+    --ring: 0.62 0.19 155;
+    /* Fitness metric colors */
+    --success: 0.62 0.19 155;
+    --warning: 0.75 0.18 72;
+    --danger: 0.577 0.245 27.325;
+    --info: 0.55 0.18 240;
+    /* Charts */
+    --chart-1: 0.62 0.19 155;
+    --chart-2: 0.55 0.18 240;
+    --chart-3: 0.75 0.18 72;
+    --chart-4: 0.65 0.22 320;
+    --chart-5: 0.577 0.245 27.325;
+    --sidebar: 1 0 0;
+    --sidebar-foreground: 0.14 0.02 250;
+    --sidebar-primary: 0.62 0.19 155;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.93 0.01 240;
+    --sidebar-accent-foreground: 0.14 0.02 250;
+    --sidebar-border: 0.88 0.01 240;
+    --sidebar-ring: 0.62 0.19 155;
+  }
+
+  .dark {
+    /* FitTrack Dark Mode — deep slate with electric green/teal accents */
+    --background: 0.11 0.01 260;
+    --foreground: 0.95 0.01 250;
+    --card: 0.15 0.015 260;
+    --card-foreground: 0.95 0.01 250;
+    --popover: 0.18 0.015 260;
+    --popover-foreground: 0.95 0.01 250;
+    --primary: 0.72 0.21 155;
+    --primary-foreground: 0.1 0.01 260;
+    --secondary: 0.22 0.02 260;
+    --secondary-foreground: 0.95 0.01 250;
+    --muted: 0.22 0.02 260;
+    --muted-foreground: 0.58 0.02 260;
+    --accent: 0.65 0.22 162;
+    --accent-foreground: 0.1 0.01 260;
+    --destructive: 0.65 0.22 25;
+    --destructive-foreground: 0.95 0.01 250;
+    --border: 1 0 0 / 10%;
+    --input: 1 0 0 / 12%;
+    --ring: 0.72 0.21 155;
+    --success: 0.72 0.21 155;
+    --warning: 0.80 0.18 72;
+    --danger: 0.65 0.22 25;
+    --info: 0.65 0.18 240;
+    --chart-1: 0.72 0.21 155;
+    --chart-2: 0.65 0.18 240;
+    --chart-3: 0.80 0.18 72;
+    --chart-4: 0.70 0.22 320;
+    --chart-5: 0.65 0.22 25;
+    --sidebar: 0.15 0.015 260;
+    --sidebar-foreground: 0.95 0.01 250;
+    --sidebar-primary: 0.72 0.21 155;
+    --sidebar-primary-foreground: 0.1 0.01 260;
+    --sidebar-accent: 0.22 0.02 260;
+    --sidebar-accent-foreground: 0.95 0.01 250;
+    --sidebar-border: 1 0 0 / 10%;
+    --sidebar-ring: 0.72 0.21 155;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Outfit", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Cabinet Grotesk", "Outfit", sans-serif;
+    font-weight: 700;
+  }
+}
+
+@layer utilities {
+  /* Fitness gradient backgrounds */
+  .gradient-primary {
+    background: linear-gradient(135deg, oklch(0.62 0.19 155), oklch(0.55 0.18 200));
+  }
+  .dark .gradient-primary {
+    background: linear-gradient(135deg, oklch(0.72 0.21 155), oklch(0.65 0.20 200));
+  }
+  .gradient-card-calories {
+    background: linear-gradient(135deg, oklch(0.55 0.22 162 / 0.15), oklch(0.55 0.22 162 / 0.05));
+  }
+  .gradient-card-weight {
+    background: linear-gradient(135deg, oklch(0.55 0.18 240 / 0.15), oklch(0.55 0.18 240 / 0.05));
+  }
+  .gradient-card-burned {
+    background: linear-gradient(135deg, oklch(0.75 0.18 72 / 0.15), oklch(0.75 0.18 72 / 0.05));
+  }
+  .gradient-card-bmi {
+    background: linear-gradient(135deg, oklch(0.65 0.22 320 / 0.15), oklch(0.65 0.22 320 / 0.05));
+  }
+
+  /* Subtle noise/texture overlay */
+  .bg-noise {
+    position: relative;
+  }
+  .bg-noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity: 0.04;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Safe area for mobile bottom nav */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Bottom nav height */
+  .bottom-nav-height {
+    height: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .scroll-area-content {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Input number spinner hide */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Recharts custom */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+.recharts-default-tooltip {
+  border-radius: 8px !important;
+  font-family: "Outfit", sans-serif !important;
+  font-size: 13px !important;
+}
