@@ -59,6 +59,7 @@ import type {
   ExerciseSet,
   SessionExercise,
   WorkoutSession,
+  WorkoutTemplate,
 } from "../types/workout";
 
 // ─── Utility Functions ────────────────────────────────────────────────────────
@@ -74,6 +75,69 @@ function formatDuration(seconds: number): string {
   if (h > 0)
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ─── Calorie Estimation (MET-based) ──────────────────────────────────────────
+// MET values per exercise category (metabolic equivalents)
+const CATEGORY_MET: Record<string, number> = {
+  Cardio: 8.0,
+  "Full Body": 6.0,
+  Legs: 5.5,
+  Glutes: 5.0,
+  Back: 4.5,
+  Chest: 4.5,
+  Shoulders: 4.0,
+  Biceps: 3.5,
+  Triceps: 3.5,
+  Core: 4.0,
+  Forearms: 3.0,
+  Calves: 3.5,
+};
+
+/**
+ * Estimate calories burned using MET formula:
+ *   kcal = MET × weight_kg × duration_hours
+ *
+ * Uses a blended MET across all exercises in the session,
+ * weighted by completed set count per category.
+ *
+ * @param exercises  Active session exercises
+ * @param durationSeconds  Elapsed time in seconds
+ * @param bodyWeightKg  User's body weight (default 70 kg if unknown)
+ */
+function estimateCaloriesBurned(
+  exercises: SessionExercise[],
+  durationSeconds: number,
+  bodyWeightKg = 70,
+): number {
+  if (durationSeconds <= 0 || exercises.length === 0) return 0;
+
+  // Count completed sets per category
+  const setsByCategory: Record<string, number> = {};
+  let totalSets = 0;
+  for (const ex of exercises) {
+    const completedSets = ex.sets.filter(
+      (s) => s.completed && !s.isWarmup,
+    ).length;
+    if (completedSets > 0) {
+      setsByCategory[ex.category] =
+        (setsByCategory[ex.category] ?? 0) + completedSets;
+      totalSets += completedSets;
+    }
+  }
+
+  // Weighted average MET
+  let avgMet = 4.0; // default if no sets completed yet
+  if (totalSets > 0) {
+    let weightedSum = 0;
+    for (const [cat, count] of Object.entries(setsByCategory)) {
+      weightedSum += (CATEGORY_MET[cat] ?? 4.0) * count;
+    }
+    avgMet = weightedSum / totalSets;
+  }
+
+  const hours = durationSeconds / 3600;
+  return Math.round(avgMet * bodyWeightKg * hours);
 }
 
 function formatDate(dateStr: string): string {
@@ -154,7 +218,7 @@ function RestTimerOverlay({
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       transition={{ type: "spring", damping: 25 }}
-      className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-50"
+      className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-[60]"
     >
       <div className="bg-card border border-border rounded-2xl shadow-xl p-4">
         <div className="flex items-center gap-4">
@@ -864,7 +928,8 @@ function WeeklyVolumeChart({ sessions }: { sessions: WorkoutSession[] }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function WorkoutTrackerScreen() {
-  const { addWorkoutLog, todayDate } = useAppContext();
+  const { addWorkoutLog, todayDate, profile } = useAppContext();
+  const bodyWeightKg = profile?.weightKg ?? 70;
   const { sessions, addSession, deleteSession } = useSessions();
   const { templates, addTemplate, deleteTemplate, incrementUsage } =
     useTemplates();
@@ -875,6 +940,8 @@ export default function WorkoutTrackerScreen() {
   const [view, setView] = useState<View>("HOME");
   const [historyDetailSession, setHistoryDetailSession] =
     useState<WorkoutSession | null>(null);
+  const [templatePreview, setTemplatePreview] =
+    useState<WorkoutTemplate | null>(null);
 
   // ── Active session state ────────────────────────────────────────────────────
   const [sessionName, setSessionName] = useState("");
@@ -910,6 +977,7 @@ export default function WorkoutTrackerScreen() {
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
   const [prAchieved, setPrAchieved] = useState<string[]>([]);
+  const [caloriesOverride, setCaloriesOverride] = useState<string>("");
 
   // ── Timer tick ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1049,6 +1117,10 @@ export default function WorkoutTrackerScreen() {
       (t, ex) => t + ex.sets.filter((s) => s.completed).length,
       0,
     );
+    const finalCalories =
+      caloriesOverride !== "" && !Number.isNaN(Number(caloriesOverride))
+        ? Math.max(0, Number(caloriesOverride))
+        : estimateCaloriesBurned(exercises, elapsed, bodyWeightKg);
 
     const session: WorkoutSession = {
       id: genId(),
@@ -1061,25 +1133,29 @@ export default function WorkoutTrackerScreen() {
       totalVolume,
       totalSets: completedSets,
       notes: sessionNotes,
+      caloriesBurned: finalCalories,
     };
 
     addSession(session);
 
-    // AppContext backward-compat
+    // AppContext workout log (used by Dashboard for calories burned today)
     const workoutLog: WorkoutLog = {
       id: session.id,
       date: todayDate,
       workoutName: sessionName,
       durationMinutes: BigInt(Math.max(1, Math.round(elapsed / 60))),
-      caloriesBurned: Math.round(completedSets * 5),
+      caloriesBurned: finalCalories,
     };
     await addWorkoutLog(workoutLog);
 
-    toast.success("Workout saved! 💪", { duration: 3000 });
+    toast.success(`Workout saved! ${finalCalories} kcal burned 🔥`, {
+      duration: 3000,
+    });
     setFinishModalOpen(false);
     setTimerActive(false);
     setView("HOME");
     setExercises([]);
+    setCaloriesOverride("");
     setRestTimer((r) => ({ ...r, active: false }));
   };
 
@@ -1139,6 +1215,18 @@ export default function WorkoutTrackerScreen() {
     (t, ex) => t + ex.sets.filter((s) => s.completed).length,
     0,
   );
+
+  // Live calorie estimate (updates every second via `elapsed`)
+  const estimatedCalories = estimateCaloriesBurned(
+    exercises,
+    elapsed,
+    bodyWeightKg,
+  );
+  // Resolved calories: user override takes precedence, else auto-estimate
+  const resolvedCalories =
+    caloriesOverride !== "" && !Number.isNaN(Number(caloriesOverride))
+      ? Math.max(0, Number(caloriesOverride))
+      : estimatedCalories;
 
   // ── History items ───────────────────────────────────────────────────────────
   const visibleSessions = showAllHistory ? sessions : sessions.slice(0, 5);
@@ -1249,10 +1337,10 @@ export default function WorkoutTrackerScreen() {
                         <div className="flex gap-1.5 mt-2">
                           <button
                             type="button"
-                            onClick={() => startFromTemplate(t.id)}
+                            onClick={() => setTemplatePreview(t)}
                             className="flex-1 h-8 rounded-xl bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
                           >
-                            Start
+                            View
                           </button>
                           <button
                             type="button"
@@ -1351,12 +1439,19 @@ export default function WorkoutTrackerScreen() {
                                     {session.totalSets} sets
                                   </span>
                                   <span className="text-xs font-semibold text-primary flex items-center gap-1">
-                                    <Flame size={10} />
+                                    <Zap size={10} />
                                     {Math.round(
                                       session.totalVolume,
                                     ).toLocaleString()}{" "}
                                     kg
                                   </span>
+                                  {session.caloriesBurned != null &&
+                                    session.caloriesBurned > 0 && (
+                                      <span className="text-xs font-semibold text-orange-500 flex items-center gap-1">
+                                        <Flame size={10} />
+                                        {session.caloriesBurned} kcal
+                                      </span>
+                                    )}
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-1 truncate">
                                   {session.exercises
@@ -1449,7 +1544,7 @@ export default function WorkoutTrackerScreen() {
               </div>
 
               {/* Quick stats bar */}
-              {(completedSets > 0 || totalVolume > 0) && (
+              {(completedSets > 0 || totalVolume > 0 || elapsed > 0) && (
                 <div className="flex items-center gap-4 mt-2 pt-2 border-t border-border/50">
                   <span className="text-xs text-muted-foreground">
                     <span className="font-bold text-foreground">
@@ -1468,6 +1563,13 @@ export default function WorkoutTrackerScreen() {
                       {Math.round(totalVolume).toLocaleString()}kg
                     </span>{" "}
                     volume
+                  </span>
+                  <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                    <Flame size={10} className="text-orange-500" />
+                    <span className="font-bold text-orange-500">
+                      {resolvedCalories}
+                    </span>{" "}
+                    kcal
                   </span>
                 </div>
               )}
@@ -1604,7 +1706,9 @@ export default function WorkoutTrackerScreen() {
 
             <div className="px-4 py-4 space-y-4">
               {/* Stats row */}
-              <div className="grid grid-cols-3 gap-2">
+              <div
+                className={`grid gap-2 ${historyDetailSession.caloriesBurned != null && historyDetailSession.caloriesBurned > 0 ? "grid-cols-2" : "grid-cols-3"}`}
+              >
                 {[
                   {
                     label: "Duration",
@@ -1619,7 +1723,7 @@ export default function WorkoutTrackerScreen() {
                   {
                     label: "Volume",
                     value: `${Math.round(historyDetailSession.totalVolume).toLocaleString()}kg`,
-                    icon: <Flame size={14} className="text-orange-500" />,
+                    icon: <Zap size={14} className="text-primary" />,
                   },
                 ].map((stat) => (
                   <div
@@ -1637,6 +1741,22 @@ export default function WorkoutTrackerScreen() {
                     </span>
                   </div>
                 ))}
+
+                {/* Calories burned card — shown when data exists */}
+                {historyDetailSession.caloriesBurned != null &&
+                  historyDetailSession.caloriesBurned > 0 && (
+                    <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-3 flex flex-col gap-1 col-span-2">
+                      <div className="flex items-center gap-1">
+                        <Flame size={14} className="text-orange-500" />
+                        <span className="text-[10px] text-orange-500 uppercase font-semibold">
+                          Calories Burned
+                        </span>
+                      </div>
+                      <span className="font-display font-bold text-xl text-orange-600 dark:text-orange-400">
+                        {historyDetailSession.caloriesBurned} kcal
+                      </span>
+                    </div>
+                  )}
               </div>
 
               {/* Notes */}
@@ -1810,6 +1930,42 @@ export default function WorkoutTrackerScreen() {
               ))}
             </div>
 
+            {/* Calories burned card */}
+            <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                    <Flame size={16} className="text-orange-500" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-orange-600 dark:text-orange-400 uppercase font-bold tracking-wide">
+                      Calories Burned
+                    </p>
+                    <p className="font-display font-bold text-lg text-orange-600 dark:text-orange-400 leading-tight">
+                      {resolvedCalories} kcal
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right flex-none">
+                  <p className="text-[10px] text-muted-foreground mb-1">
+                    Override
+                  </p>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder={String(estimatedCalories)}
+                    value={caloriesOverride}
+                    onChange={(e) => setCaloriesOverride(e.target.value)}
+                    className="w-20 h-8 text-sm text-center rounded-lg bg-background border-border"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Auto-calculated from exercise type, duration &amp; body weight (
+                {bodyWeightKg} kg). Edit to override.
+              </p>
+            </div>
+
             {prAchieved.length > 0 && (
               <div className="rounded-xl bg-yellow-500/10 border border-yellow-500/20 p-3">
                 <p className="text-xs font-bold text-yellow-600 dark:text-yellow-400 flex items-center gap-1.5 mb-1">
@@ -1864,6 +2020,75 @@ export default function WorkoutTrackerScreen() {
           <DialogFooter>
             <Button onClick={saveAsTemplate} className="w-full rounded-xl">
               Save Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Template Preview Dialog ─────────────────────────────────────────── */}
+      <Dialog
+        open={!!templatePreview}
+        onOpenChange={(o) => {
+          if (!o) setTemplatePreview(null);
+        }}
+      >
+        <DialogContent className="max-w-[420px] w-[95vw] max-h-[85vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border flex-none">
+            <DialogTitle className="font-display text-lg font-bold flex items-center gap-2">
+              <LayoutTemplate size={18} className="text-primary" />
+              {templatePreview?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {templatePreview?.exercises.length} exercises ·{" "}
+              {templatePreview?.usageCount}× used
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Exercise list */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+            {templatePreview?.exercises.map((ex, idx) => (
+              <div
+                key={`${ex.exerciseId}-${idx}`}
+                className="flex items-center gap-3 py-2.5 px-3 rounded-xl bg-secondary/50"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-none text-xs font-bold text-primary">
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-foreground truncate">
+                    {ex.exerciseName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {ex.defaultSets} sets × {ex.defaultReps} reps
+                    {ex.defaultWeightKg > 0 ? ` · ${ex.defaultWeightKg}kg` : ""}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-[10px] flex-none">
+                  {ex.category}
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="px-4 pb-4 pt-3 border-t border-border flex gap-2 flex-none">
+            <Button
+              variant="outline"
+              onClick={() => setTemplatePreview(null)}
+              className="flex-1 rounded-xl"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                if (templatePreview) {
+                  startFromTemplate(templatePreview.id);
+                  setTemplatePreview(null);
+                }
+              }}
+              className="flex-1 rounded-xl bg-primary text-primary-foreground font-bold"
+            >
+              <Zap size={14} className="mr-1.5" />
+              Start Workout
             </Button>
           </DialogFooter>
         </DialogContent>

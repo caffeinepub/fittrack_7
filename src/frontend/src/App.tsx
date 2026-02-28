@@ -8,14 +8,22 @@ import { ThemeProvider } from "./context/ThemeContext";
 
 import DashboardScreen from "./screens/DashboardScreen";
 import DietTrackerScreen from "./screens/DietTrackerScreen";
+import HabitTrackerScreen from "./screens/HabitTrackerScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import ProgressScreen from "./screens/ProgressScreen";
 import WorkoutTrackerScreen from "./screens/WorkoutTrackerScreen";
 
 // Icons
-import { Apple, Dumbbell, Home, TrendingUp, UserCircle } from "lucide-react";
+import {
+  Apple,
+  Droplets,
+  Dumbbell,
+  Home,
+  TrendingUp,
+  UserCircle,
+} from "lucide-react";
 
-type Tab = "dashboard" | "diet" | "workout" | "progress" | "profile";
+type Tab = "dashboard" | "diet" | "workout" | "habits" | "progress" | "profile";
 
 const NAV_ITEMS: {
   id: Tab;
@@ -25,6 +33,7 @@ const NAV_ITEMS: {
   { id: "dashboard", label: "Home", icon: Home },
   { id: "diet", label: "Diet", icon: Apple },
   { id: "workout", label: "Workout", icon: Dumbbell },
+  { id: "habits", label: "Habits", icon: Droplets },
   { id: "progress", label: "Progress", icon: TrendingUp },
   { id: "profile", label: "Profile", icon: UserCircle },
 ];
@@ -98,6 +107,8 @@ function AppContent() {
         return <DietTrackerScreen />;
       case "workout":
         return <WorkoutTrackerScreen />;
+      case "habits":
+        return <HabitTrackerScreen />;
       case "progress":
         return <ProgressScreen />;
       case "profile":
@@ -176,7 +187,14 @@ function AppContent() {
 
 // Determine slide direction based on tab order
 function getDirection(from: Tab, to: Tab): number {
-  const order: Tab[] = ["dashboard", "diet", "workout", "progress", "profile"];
+  const order: Tab[] = [
+    "dashboard",
+    "diet",
+    "workout",
+    "habits",
+    "progress",
+    "profile",
+  ];
   const fromIdx = order.indexOf(from);
   const toIdx = order.indexOf(to);
   if (fromIdx === toIdx) return 0;

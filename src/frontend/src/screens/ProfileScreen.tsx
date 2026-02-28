@@ -19,6 +19,7 @@ import {
   Sun,
   Target,
   User,
+  Utensils,
   Weight,
 } from "lucide-react";
 import { type Variants, motion } from "motion/react";
@@ -40,6 +41,21 @@ import {
   saveReminders,
   scheduleMealReminder,
 } from "../services/notificationService";
+
+function getStoredMacroGoals() {
+  try {
+    const stored = localStorage.getItem("fittrack_macro_goals");
+    if (stored) {
+      const p = JSON.parse(stored) as {
+        protein: number;
+        carbs: number;
+        fat: number;
+      };
+      if (p.protein && p.carbs && p.fat) return p;
+    }
+  } catch {}
+  return { protein: 150, carbs: 250, fat: 60 };
+}
 
 export default function ProfileScreen() {
   const { profile, setProfile } = useAppContext();
@@ -64,6 +80,15 @@ export default function ProfileScreen() {
   const [calorieGoalOverride, setCalorieGoalOverride] = useState(
     localStorage.getItem("fittrack_calorie_goal") || "",
   );
+
+  // Macro goals
+  const [proteinGoal, setProteinGoal] = useState(
+    String(getStoredMacroGoals().protein),
+  );
+  const [carbsGoal, setCarbsGoal] = useState(
+    String(getStoredMacroGoals().carbs),
+  );
+  const [fatGoal, setFatGoal] = useState(String(getStoredMacroGoals().fat));
 
   // Sync form when profile changes
   useEffect(() => {
@@ -139,6 +164,15 @@ export default function ProfileScreen() {
       } else {
         localStorage.removeItem("fittrack_calorie_goal");
       }
+
+      // Save macro goals
+      const pGoal = Number.parseInt(proteinGoal) || 150;
+      const cGoal = Number.parseInt(carbsGoal) || 250;
+      const fGoal = Number.parseInt(fatGoal) || 60;
+      localStorage.setItem(
+        "fittrack_macro_goals",
+        JSON.stringify({ protein: pGoal, carbs: cGoal, fat: fGoal }),
+      );
 
       // Try backend async (fire and forget — don't block UI)
       if (actor) {
@@ -465,6 +499,98 @@ export default function ProfileScreen() {
               on your stats)
             </p>
           </div>
+        </motion.div>
+
+        {/* Macro Goals */}
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-3"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
+              <Utensils size={14} className="text-violet-500" />
+            </div>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Macro Goals
+            </h2>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {/* Protein */}
+            <div>
+              <Label
+                htmlFor="protein-goal"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Protein
+              </Label>
+              <div className="relative">
+                <Input
+                  id="protein-goal"
+                  type="number"
+                  placeholder="150"
+                  value={proteinGoal}
+                  onChange={(e) => setProteinGoal(e.target.value)}
+                  className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl pr-8"
+                  min={0}
+                  max={500}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                  g
+                </span>
+              </div>
+            </div>
+            {/* Carbs */}
+            <div>
+              <Label
+                htmlFor="carbs-goal"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Carbs
+              </Label>
+              <div className="relative">
+                <Input
+                  id="carbs-goal"
+                  type="number"
+                  placeholder="250"
+                  value={carbsGoal}
+                  onChange={(e) => setCarbsGoal(e.target.value)}
+                  className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl pr-8"
+                  min={0}
+                  max={1000}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                  g
+                </span>
+              </div>
+            </div>
+            {/* Fat */}
+            <div>
+              <Label
+                htmlFor="fat-goal"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Fat
+              </Label>
+              <div className="relative">
+                <Input
+                  id="fat-goal"
+                  type="number"
+                  placeholder="60"
+                  value={fatGoal}
+                  onChange={(e) => setFatGoal(e.target.value)}
+                  className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl pr-8"
+                  min={0}
+                  max={300}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                  g
+                </span>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Used in Diet Tracker macro progress bars
+          </p>
         </motion.div>
 
         {/* Meal Reminders */}

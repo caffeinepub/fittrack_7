@@ -29,6 +29,7 @@ export interface WorkoutSession {
   totalVolume: number; // sum of (weight * reps) for completed sets
   totalSets: number;
   notes: string;
+  caloriesBurned?: number; // estimated kcal burned during this session
 }
 
 export interface WorkoutTemplate {
