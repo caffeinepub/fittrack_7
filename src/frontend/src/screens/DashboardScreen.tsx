@@ -11,11 +11,17 @@ import {
 import { type Variants, motion } from "motion/react";
 import React from "react";
 import { useAppContext } from "../context/AppContext";
+import { FOOD_DATABASE } from "../data/foodDatabase";
+import type { FoodItem } from "../data/foodDatabase";
 import {
   calculateBMI,
   calculateCalorieGoal,
   getBMICategory,
 } from "../services/bmiService";
+
+// Build lookup map for macro calculations
+const DASH_FOOD_LOOKUP = new Map<string, FoodItem>();
+for (const f of FOOD_DATABASE) DASH_FOOD_LOOKUP.set(f.name.toLowerCase(), f);
 
 interface DashboardScreenProps {
   onNavigate: (tab: string) => void;
@@ -48,6 +54,25 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
   const caloriesBurned = todayWorkoutLogs.reduce(
     (sum, log) => sum + log.caloriesBurned,
     0,
+  );
+
+  // Macro totals for today
+  const macrosToday = todayFoodLogs.reduce(
+    (acc, log) => {
+      const food = DASH_FOOD_LOOKUP.get(log.foodName.toLowerCase());
+      if (!food) return acc;
+      return {
+        protein:
+          acc.protein +
+          Math.round(((food.protein ?? 0) / 100) * log.grams * 10) / 10,
+        carbs:
+          acc.carbs +
+          Math.round(((food.carbs ?? 0) / 100) * log.grams * 10) / 10,
+        fat:
+          acc.fat + Math.round(((food.fat ?? 0) / 100) * log.grams * 10) / 10,
+      };
+    },
+    { protein: 0, carbs: 0, fat: 0 },
   );
   const netCalories = caloriesConsumed - caloriesBurned;
   const isDeficit = netCalories < calorieGoal;
@@ -187,6 +212,43 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
             </div>
           </div>
         </motion.div>
+
+        {/* Macros Today Card */}
+        {todayFoodLogs.length > 0 && (
+          <motion.div variants={cardVariants}>
+            <div className="rounded-2xl bg-card border border-border p-4">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                Macros Today
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-blue-500/10 px-3 py-2.5 text-center">
+                  <p className="font-display text-xl font-bold text-blue-500">
+                    {Math.round(macrosToday.protein)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Protein
+                  </p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 px-3 py-2.5 text-center">
+                  <p className="font-display text-xl font-bold text-amber-500">
+                    {Math.round(macrosToday.carbs)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Carbs
+                  </p>
+                </div>
+                <div className="rounded-xl bg-orange-500/10 px-3 py-2.5 text-center">
+                  <p className="font-display text-xl font-bold text-orange-500">
+                    {Math.round(macrosToday.fat)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Fat
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Stat Cards Grid */}
         <div className="grid grid-cols-2 gap-3">

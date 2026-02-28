@@ -20,14 +20,22 @@ import { AnimatePresence, motion } from "motion/react";
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { type CustomRecipe, useAppContext } from "../context/AppContext";
-import { searchLocalFood } from "../data/foodDatabase";
+import { FOOD_DATABASE, searchLocalFood } from "../data/foodDatabase";
+import type { FoodItem } from "../data/foodDatabase";
 import { searchFoodUSDA } from "../services/foodApiService";
+
+// Lookup map for macro data
+const RECIPE_FOOD_LOOKUP = new Map<string, FoodItem>();
+for (const f of FOOD_DATABASE) RECIPE_FOOD_LOOKUP.set(f.name.toLowerCase(), f);
 
 interface IngredientRow {
   name: string;
   grams: number;
   caloriesPer100g: number;
   calories: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
 }
 
 interface SearchResult {
@@ -175,6 +183,7 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
   const handleSelectFood = (food: SearchResult) => {
     const grams = 100;
     const calories = Math.round((food.caloriesPer100g / 100) * grams);
+    const dbFood = RECIPE_FOOD_LOOKUP.get(food.name.toLowerCase());
     setIngredients((prev) => [
       ...prev,
       {
@@ -182,6 +191,9 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
         caloriesPer100g: food.caloriesPer100g,
         grams,
         calories,
+        protein: dbFood?.protein,
+        carbs: dbFood?.carbs,
+        fat: dbFood?.fat,
       },
     ]);
     setQuery("");
@@ -207,6 +219,23 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
       ),
     );
   };
+
+  // Calculate total macros across all ingredients
+  const totalProtein = ingredients.reduce((sum, ing) => {
+    if (ing.protein == null) return sum;
+    return sum + Math.round((ing.protein / 100) * ing.grams * 10) / 10;
+  }, 0);
+  const totalCarbs = ingredients.reduce((sum, ing) => {
+    if (ing.carbs == null) return sum;
+    return sum + Math.round((ing.carbs / 100) * ing.grams * 10) / 10;
+  }, 0);
+  const totalFat = ingredients.reduce((sum, ing) => {
+    if (ing.fat == null) return sum;
+    return sum + Math.round((ing.fat / 100) * ing.grams * 10) / 10;
+  }, 0);
+  const hasMacroData = ingredients.some(
+    (ing) => ing.protein != null || ing.carbs != null || ing.fat != null,
+  );
 
   const handleRemove = (idx: number) => {
     setIngredients((prev) => prev.filter((_, i) => i !== idx));
@@ -421,6 +450,35 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
                       <p className="text-xs text-muted-foreground">
                         {ing.caloriesPer100g} kcal/100g
                       </p>
+                      {(ing.protein != null ||
+                        ing.carbs != null ||
+                        ing.fat != null) && (
+                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                          <span className="text-blue-500/80">
+                            P{" "}
+                            {Math.round(
+                              ((ing.protein ?? 0) / 100) * ing.grams * 10,
+                            ) / 10}
+                            g
+                          </span>
+                          {" · "}
+                          <span className="text-amber-500/80">
+                            C{" "}
+                            {Math.round(
+                              ((ing.carbs ?? 0) / 100) * ing.grams * 10,
+                            ) / 10}
+                            g
+                          </span>
+                          {" · "}
+                          <span className="text-orange-500/80">
+                            F{" "}
+                            {Math.round(
+                              ((ing.fat ?? 0) / 100) * ing.grams * 10,
+                            ) / 10}
+                            g
+                          </span>
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-1">
@@ -492,6 +550,36 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
               </div>
             ))}
           </div>
+
+          {/* Macro totals row */}
+          {hasMacroData && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="text-center bg-blue-500/10 rounded-xl py-2 px-1">
+                <p className="font-display text-base font-bold text-blue-500 leading-tight">
+                  {Math.round(totalProtein)}g
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  Protein
+                </p>
+              </div>
+              <div className="text-center bg-amber-500/10 rounded-xl py-2 px-1">
+                <p className="font-display text-base font-bold text-amber-500 leading-tight">
+                  {Math.round(totalCarbs)}g
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  Carbs
+                </p>
+              </div>
+              <div className="text-center bg-orange-500/10 rounded-xl py-2 px-1">
+                <p className="font-display text-base font-bold text-orange-500 leading-tight">
+                  {Math.round(totalFat)}g
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  Fat
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Save button */}
           <Button

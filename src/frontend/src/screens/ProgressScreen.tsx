@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TrendingUp as ArrowUp,
@@ -16,7 +17,10 @@ import {
 import { type Variants, motion } from "motion/react";
 import React, { useState, useMemo } from "react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ReferenceLine,
@@ -35,6 +39,140 @@ import {
 } from "../services/bmiService";
 
 type Period = "weekly" | "monthly";
+
+// ── Net Calorie 7-Day Bar Chart ────────────────────────────────────────────
+interface NetCalBarEntry {
+  day: string;
+  netCalories: number;
+  isOnTrack: boolean;
+}
+
+interface NetCalTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number }>;
+  label?: string;
+}
+function NetCalTooltip({ active, payload, label }: NetCalTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const val = payload[0].value;
+  return (
+    <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-foreground mb-1">{label}</p>
+      <p
+        className={`font-medium ${val > 0 ? "text-orange-500" : "text-green-500"}`}
+      >
+        Net: {val > 0 ? "+" : ""}
+        {val} kcal
+      </p>
+    </div>
+  );
+}
+
+function NetCalorieBarChart({
+  allFoodLogs,
+  allWorkoutLogs,
+  todayDate,
+  calorieGoal,
+}: {
+  allFoodLogs: Array<{ date: string; totalCalories: number }>;
+  allWorkoutLogs: Array<{ date: string; caloriesBurned: number }>;
+  todayDate: string;
+  calorieGoal: number;
+}) {
+  const chartData = useMemo<NetCalBarEntry[]>(() => {
+    const days: NetCalBarEntry[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(`${todayDate}T00:00:00`);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayLabel = d.toLocaleDateString("en-US", { weekday: "short" });
+
+      const consumed = allFoodLogs
+        .filter((l) => l.date === dateStr)
+        .reduce((s, l) => s + l.totalCalories, 0);
+      const burned = allWorkoutLogs
+        .filter((l) => l.date === dateStr)
+        .reduce((s, l) => s + l.caloriesBurned, 0);
+
+      const netCalories = consumed - burned;
+      days.push({
+        day: dayLabel,
+        netCalories,
+        isOnTrack: netCalories <= calorieGoal,
+      });
+    }
+    return days;
+  }, [allFoodLogs, allWorkoutLogs, todayDate, calorieGoal]);
+
+  // If no data logged at all, show placeholder
+  const hasAnyData = chartData.some((d) => d.netCalories !== 0);
+
+  return (
+    <div className="border-t border-border/50 pt-3">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        7-Day Net Calories
+      </p>
+      {hasAnyData ? (
+        <ResponsiveContainer width="100%" height={140}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 4, right: 4, left: -24, bottom: 4 }}
+            barSize={20}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="currentColor"
+              className="opacity-10"
+              vertical={false}
+            />
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: 10, fill: "#9ca3af" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 9, fill: "#9ca3af" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip
+              content={<NetCalTooltip />}
+              cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            />
+            <ReferenceLine
+              y={calorieGoal}
+              stroke="#22c55e"
+              strokeDasharray="4 2"
+              strokeOpacity={0.7}
+              label={{
+                value: "Goal",
+                fontSize: 9,
+                fill: "#22c55e",
+                position: "insideTopRight",
+              }}
+            />
+            <Bar dataKey="netCalories" radius={[4, 4, 0, 0]}>
+              {chartData.map((entry) => (
+                <Cell
+                  key={entry.day}
+                  fill={entry.isOnTrack ? "#22c55e" : "#f97316"}
+                  fillOpacity={0.85}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="flex items-center justify-center h-[60px]">
+          <p className="text-xs text-muted-foreground">
+            Log food to see net calorie chart
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ChartDataPoint {
   date: string;
@@ -846,8 +984,16 @@ export default function ProgressScreen() {
                   </div>
                 </div>
 
+                {/* 7-Day Net Calorie Bar Chart */}
+                <NetCalorieBarChart
+                  allFoodLogs={allFoodLogs}
+                  allWorkoutLogs={allWorkoutLogs}
+                  todayDate={todayDate}
+                  calorieGoal={calorieGoal}
+                />
+
                 {/* Projections */}
-                <div className="border-t border-border/50 pt-3 space-y-2">
+                <div className="border-t border-border/50 pt-3 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Projected Weight
                   </p>
@@ -855,17 +1001,14 @@ export default function ProgressScreen() {
                     {
                       label: "30 days",
                       proj: forecast.projected30,
-                      weight: 30,
                     },
                     {
                       label: "60 days",
                       proj: forecast.projected60,
-                      weight: 60,
                     },
                     {
                       label: "90 days",
                       proj: forecast.projected90,
-                      weight: 90,
                     },
                   ].map(({ label, proj }) => {
                     if (
@@ -875,24 +1018,73 @@ export default function ProgressScreen() {
                       return null;
                     const diff = proj - forecast.currentWeight;
                     const isGain = diff > 0;
+
+                    // Calculate progress bar percentage toward goal weight
+                    let progressPct = 0;
+                    let towardGoal = false;
+                    if (
+                      storedGoalWeight > 0 &&
+                      forecast.currentWeight !== storedGoalWeight
+                    ) {
+                      const isLosingGoal =
+                        storedGoalWeight < forecast.currentWeight;
+                      if (isLosingGoal && !isGain) {
+                        towardGoal = true;
+                        progressPct =
+                          ((forecast.currentWeight - proj) /
+                            (forecast.currentWeight - storedGoalWeight)) *
+                          100;
+                      } else if (!isLosingGoal && isGain) {
+                        towardGoal = true;
+                        progressPct =
+                          ((proj - forecast.currentWeight) /
+                            (storedGoalWeight - forecast.currentWeight)) *
+                          100;
+                      } else {
+                        towardGoal = false;
+                        progressPct = 15; // moving away — show minimal fill
+                      }
+                    } else {
+                      // No goal: show how much weight change has happened visually
+                      progressPct = Math.min(
+                        Math.abs(diff / forecast.currentWeight) * 300,
+                        60,
+                      );
+                      towardGoal = !isGain;
+                    }
+                    const clampedPct = Math.max(
+                      0,
+                      Math.min(100, Math.round(progressPct)),
+                    );
+
                     return (
-                      <div
-                        key={label}
-                        className="flex items-center justify-between"
-                      >
-                        <span className="text-sm text-muted-foreground">
-                          {label}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-foreground">
-                            {proj.toFixed(1)} kg
+                      <div key={label} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            {label}
                           </span>
-                          <span
-                            className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${isGain ? "bg-orange-500/15 text-orange-500" : "bg-green-500/15 text-green-500"}`}
-                          >
-                            {isGain ? "+" : ""}
-                            {diff.toFixed(1)} kg
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-foreground">
+                              {proj.toFixed(1)} kg
+                            </span>
+                            <span
+                              className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${isGain ? "bg-orange-500/15 text-orange-500" : "bg-green-500/15 text-green-500"}`}
+                            >
+                              {isGain ? "+" : ""}
+                              {diff.toFixed(1)} kg
+                            </span>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <Progress
+                            value={clampedPct}
+                            className={`h-2 ${towardGoal ? "[&>div]:bg-green-500" : "[&>div]:bg-orange-400"}`}
+                          />
+                          {storedGoalWeight > 0 && (
+                            <span className="text-[9px] text-muted-foreground absolute right-0 -top-3.5">
+                              {clampedPct}% to goal
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

@@ -15,6 +15,17 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 import type { FoodLog } from "../backend.d";
 import RecipeBuilder from "../components/RecipeBuilder";
@@ -28,10 +39,320 @@ import {
 } from "../data/foodDatabase";
 import { searchFoodUSDA } from "../services/foodApiService";
 
-// Build a lookup map: food name (lowercase) -> FoodItem for quick isLiquid checks
+// Macro colors (hex so Recharts can parse them)
+const MACRO_COLORS = {
+  protein: "#3b82f6",
+  carbs: "#f59e0b",
+  fat: "#f97316",
+} as const;
+
+// Default macro goals
+const DEFAULT_MACRO_GOALS = { protein: 150, carbs: 250, fat: 60 };
+
+function getMacroGoals(): { protein: number; carbs: number; fat: number } {
+  try {
+    const stored = localStorage.getItem("fittrack_macro_goals");
+    if (stored) {
+      const parsed = JSON.parse(stored) as {
+        protein: number;
+        carbs: number;
+        fat: number;
+      };
+      if (parsed.protein && parsed.carbs && parsed.fat) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_MACRO_GOALS;
+}
+
+interface MacroPieTooltipProps {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; payload: { fill: string } }>;
+}
+function MacroPieTooltip({ active, payload }: MacroPieTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  return (
+    <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-foreground">
+        {entry.name}:{" "}
+        <span style={{ color: entry.payload.fill }}>{entry.value} kcal</span>
+      </p>
+    </div>
+  );
+}
+
+interface MacroBarTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number; name: string }>;
+  label?: string;
+}
+function MacroBarTooltip({ active, payload, label }: MacroBarTooltipProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-foreground mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.name} className="text-muted-foreground">
+          {p.value}g consumed
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// Build a lookup map: food name (lowercase) -> FoodItem for quick isLiquid + macro lookups
 const FOOD_LOOKUP = new Map<string, FoodItem>();
 for (const f of FOOD_DATABASE) FOOD_LOOKUP.set(f.name.toLowerCase(), f);
 
+// Helper: calculate macros for a logged food (grams × nutrient/100)
+function calcMacros(
+  food: { protein?: number; carbs?: number; fat?: number } | undefined,
+  grams: number,
+): { protein: number; carbs: number; fat: number } {
+  if (!food) return { protein: 0, carbs: 0, fat: 0 };
+  return {
+    protein: Math.round(((food.protein ?? 0) / 100) * grams * 10) / 10,
+    carbs: Math.round(((food.carbs ?? 0) / 100) * grams * 10) / 10,
+    fat: Math.round(((food.fat ?? 0) / 100) * grams * 10) / 10,
+  };
+}
+
+// ── Macro Donut Chart Component ────────────────────────────────────────────
+function MacroDonutCard({
+  dailyMacros,
+}: {
+  dailyMacros: { protein: number; carbs: number; fat: number };
+}) {
+  const proteinKcal = Math.round(dailyMacros.protein * 4);
+  const carbsKcal = Math.round(dailyMacros.carbs * 4);
+  const fatKcal = Math.round(dailyMacros.fat * 9);
+  const totalKcal = proteinKcal + carbsKcal + fatKcal;
+
+  const pieData = [
+    { name: "Protein", value: proteinKcal, fill: MACRO_COLORS.protein },
+    { name: "Carbs", value: carbsKcal, fill: MACRO_COLORS.carbs },
+    { name: "Fat", value: fatKcal, fill: MACRO_COLORS.fat },
+  ].filter((d) => d.value > 0);
+
+  if (totalKcal === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="rounded-2xl bg-card border border-border p-4"
+    >
+      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-3">
+        Macro Split (kcal)
+      </p>
+      <div className="relative flex justify-center">
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie
+              data={pieData}
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={80}
+              dataKey="value"
+              paddingAngle={3}
+              strokeWidth={0}
+            >
+              {pieData.map((entry) => (
+                <Cell key={entry.name} fill={entry.fill} />
+              ))}
+            </Pie>
+            <Tooltip content={<MacroPieTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* Center label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <p className="font-display text-xl font-bold text-foreground">
+            {totalKcal}
+          </p>
+          <p className="text-[10px] text-muted-foreground">kcal</p>
+        </div>
+      </div>
+      {/* Legend */}
+      <div className="flex justify-center gap-4 mt-1">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: MACRO_COLORS.protein }}
+          />
+          <span className="text-xs text-muted-foreground">
+            Protein{" "}
+            <strong className="text-foreground">{proteinKcal} kcal</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: MACRO_COLORS.carbs }}
+          />
+          <span className="text-xs text-muted-foreground">
+            Carbs <strong className="text-foreground">{carbsKcal} kcal</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: MACRO_COLORS.fat }}
+          />
+          <span className="text-xs text-muted-foreground">
+            Fat <strong className="text-foreground">{fatKcal} kcal</strong>
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Macro Bar Chart vs Goal Component ──────────────────────────────────────
+interface MacroBarEntry {
+  name: string;
+  actual: number;
+  remaining: number;
+  goal: number;
+  fill: string;
+}
+
+interface MacroBarCustomLabelProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  value?: number;
+  index?: number;
+  barData?: MacroBarEntry[];
+}
+
+function MacroBarCustomLabel({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  value,
+  index = 0,
+  barData = [],
+}: MacroBarCustomLabelProps) {
+  if (!value) return null;
+  const entry = barData[index];
+  if (!entry) return null;
+  return (
+    <text
+      x={x + width + 6}
+      y={y + height / 2 + 1}
+      fill="#9ca3af"
+      fontSize={10}
+      dominantBaseline="middle"
+    >
+      {entry.actual}g / {entry.goal}g
+    </text>
+  );
+}
+
+function MacroBarCard({
+  dailyMacros,
+}: {
+  dailyMacros: { protein: number; carbs: number; fat: number };
+}) {
+  const goals = getMacroGoals();
+
+  const barData: MacroBarEntry[] = [
+    {
+      name: "Protein",
+      actual: Math.round(dailyMacros.protein),
+      remaining: Math.max(0, goals.protein - Math.round(dailyMacros.protein)),
+      goal: goals.protein,
+      fill: MACRO_COLORS.protein,
+    },
+    {
+      name: "Carbs",
+      actual: Math.round(dailyMacros.carbs),
+      remaining: Math.max(0, goals.carbs - Math.round(dailyMacros.carbs)),
+      goal: goals.carbs,
+      fill: MACRO_COLORS.carbs,
+    },
+    {
+      name: "Fat",
+      actual: Math.round(dailyMacros.fat),
+      remaining: Math.max(0, goals.fat - Math.round(dailyMacros.fat)),
+      goal: goals.fat,
+      fill: MACRO_COLORS.fat,
+    },
+  ];
+
+  const maxGoal = Math.max(...barData.map((d) => d.goal)) * 1.1;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.08 }}
+      className="rounded-2xl bg-card border border-border p-4"
+    >
+      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-3">
+        Daily Macros vs Goal
+      </p>
+      <ResponsiveContainer width="100%" height={130}>
+        <BarChart
+          data={barData}
+          layout="vertical"
+          margin={{ top: 4, right: 80, left: 8, bottom: 4 }}
+          barSize={18}
+        >
+          <XAxis
+            type="number"
+            domain={[0, maxGoal]}
+            tick={false}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 11, fill: "#9ca3af" }}
+            axisLine={false}
+            tickLine={false}
+            width={44}
+          />
+          <Tooltip
+            content={<MacroBarTooltip />}
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          />
+          {/* Background bar showing goal */}
+          <Bar
+            dataKey="goal"
+            stackId="a"
+            fill="rgba(156,163,175,0.12)"
+            radius={[0, 6, 6, 0]}
+          >
+            {barData.map((entry) => (
+              <Cell key={entry.name} fill="rgba(156,163,175,0.12)" />
+            ))}
+          </Bar>
+          {/* Actual consumed bar (stacked on top of ghost) */}
+          <Bar
+            dataKey="actual"
+            stackId="b"
+            radius={[0, 6, 6, 0]}
+            label={<MacroBarCustomLabel barData={barData} />}
+          >
+            {barData.map((entry) => (
+              <Cell key={entry.name} fill={entry.fill} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </motion.div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack";
 
 const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack"];
@@ -63,6 +384,9 @@ const MEAL_COLORS: Record<MealType, { bg: string; text: string; dot: string }> =
 interface SearchResult {
   name: string;
   caloriesPer100g: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
   category?: string;
   source: "local" | "usda" | "recipe";
   defaultGrams?: number;
@@ -102,6 +426,20 @@ export default function DietTrackerScreen() {
   const totalCalories = todayFoodLogs.reduce(
     (sum, log) => sum + log.totalCalories,
     0,
+  );
+
+  // Daily macro totals — look up food in FOOD_LOOKUP to get per-100g macros
+  const dailyMacros = todayFoodLogs.reduce(
+    (acc, log) => {
+      const food = FOOD_LOOKUP.get(log.foodName.toLowerCase());
+      const m = calcMacros(food, log.grams);
+      return {
+        protein: acc.protein + m.protein,
+        carbs: acc.carbs + m.carbs,
+        fat: acc.fat + m.fat,
+      };
+    },
+    { protein: 0, carbs: 0, fat: 0 },
   );
 
   const doSearch = useCallback(
@@ -175,6 +513,10 @@ export default function DietTrackerScreen() {
         (selectedFood.caloriesPer100g / 100) * (Number.parseFloat(grams) || 0),
       )
     : 0;
+
+  const macroPreview = selectedFood
+    ? calcMacros(selectedFood, Number.parseFloat(grams) || 0)
+    : { protein: 0, carbs: 0, fat: 0 };
 
   const handleSelectFood = (food: SearchResult) => {
     setSelectedFood(food);
@@ -366,15 +708,34 @@ export default function DietTrackerScreen() {
                   onClick={() => handleSelectFood(food)}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border last:border-0 text-left"
                 >
-                  <div>
+                  <div className="flex-1 min-w-0 mr-3">
                     <p className="font-medium text-sm text-foreground">
                       {food.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {food.category || "General"}
                     </p>
+                    {(food.protein != null ||
+                      food.carbs != null ||
+                      food.fat != null) && (
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                        <span className="text-blue-500/80">
+                          P {food.protein ?? 0}g
+                        </span>
+                        {" · "}
+                        <span className="text-amber-500/80">
+                          C {food.carbs ?? 0}g
+                        </span>
+                        {" · "}
+                        <span className="text-orange-500/80">
+                          F {food.fat ?? 0}g
+                        </span>
+                        {" per 100"}
+                        {food.isLiquid ? "ml" : "g"}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm font-semibold text-foreground">
                       {food.caloriesPer100g}
                     </span>
@@ -653,15 +1014,28 @@ export default function DietTrackerScreen() {
                         }}
                         className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors border-b border-border last:border-0 text-left"
                       >
-                        <div>
+                        <div className="flex-1 min-w-0 mr-3">
                           <p className="font-medium text-sm text-foreground">
                             {food.name}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {food.category}
                           </p>
+                          <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                            <span className="text-blue-500/80">
+                              P {food.protein}g
+                            </span>
+                            {" · "}
+                            <span className="text-amber-500/80">
+                              C {food.carbs}g
+                            </span>
+                            {" · "}
+                            <span className="text-orange-500/80">
+                              F {food.fat}g
+                            </span>
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-sm font-semibold text-foreground">
                             {food.caloriesPer100g}
                           </span>
@@ -763,6 +1137,32 @@ export default function DietTrackerScreen() {
                 </div>
               </div>
 
+              {/* Live macro preview */}
+              {(selectedFood.protein != null ||
+                selectedFood.carbs != null ||
+                selectedFood.fat != null) && (
+                <div className="flex gap-2">
+                  <div className="flex-1 rounded-xl bg-blue-500/10 px-3 py-2 text-center">
+                    <p className="font-bold text-sm text-blue-500">
+                      {macroPreview.protein}g
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Protein</p>
+                  </div>
+                  <div className="flex-1 rounded-xl bg-amber-500/10 px-3 py-2 text-center">
+                    <p className="font-bold text-sm text-amber-500">
+                      {macroPreview.carbs}g
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Carbs</p>
+                  </div>
+                  <div className="flex-1 rounded-xl bg-orange-500/10 px-3 py-2 text-center">
+                    <p className="font-bold text-sm text-orange-500">
+                      {macroPreview.fat}g
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Fat</p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <div className="text-center">
                   <p className="font-display text-3xl font-bold text-primary">
@@ -847,45 +1247,63 @@ export default function DietTrackerScreen() {
                       transition={{ duration: 0.2 }}
                     >
                       <div className="border-t border-border">
-                        {logs.map((log) => (
-                          <div
-                            key={log.id}
-                            className="flex items-center justify-between px-4 py-2.5 hover:bg-secondary/30 transition-colors border-b border-border/50 last:border-0"
-                          >
-                            <div className="flex-1 min-w-0 mr-3">
-                              <p className="font-medium text-sm text-foreground truncate">
-                                {log.foodName}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {log.grams}
-                                {FOOD_LOOKUP.get(log.foodName.toLowerCase())
-                                  ?.isLiquid
-                                  ? "ml"
-                                  : "g"}{" "}
-                                · {log.caloriesPer100g} kcal/100
-                                {FOOD_LOOKUP.get(log.foodName.toLowerCase())
-                                  ?.isLiquid
-                                  ? "ml"
-                                  : "g"}
-                              </p>
+                        {logs.map((log) => {
+                          const foodItem = FOOD_LOOKUP.get(
+                            log.foodName.toLowerCase(),
+                          );
+                          const logMacros = calcMacros(foodItem, log.grams);
+                          const hasMacros =
+                            foodItem &&
+                            (foodItem.protein > 0 ||
+                              foodItem.carbs > 0 ||
+                              foodItem.fat > 0);
+                          return (
+                            <div
+                              key={log.id}
+                              className="flex items-center justify-between px-4 py-2.5 hover:bg-secondary/30 transition-colors border-b border-border/50 last:border-0"
+                            >
+                              <div className="flex-1 min-w-0 mr-3">
+                                <p className="font-medium text-sm text-foreground truncate">
+                                  {log.foodName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {log.grams}
+                                  {foodItem?.isLiquid ? "ml" : "g"} ·{" "}
+                                  {log.caloriesPer100g} kcal/100
+                                  {foodItem?.isLiquid ? "ml" : "g"}
+                                </p>
+                                {hasMacros && (
+                                  <div className="flex gap-1.5 mt-1">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 font-medium">
+                                      P {logMacros.protein}g
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
+                                      C {logMacros.carbs}g
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500 font-medium">
+                                      F {logMacros.fat}g
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-semibold text-sm text-foreground">
+                                  {log.totalCalories} kcal
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDelete(log.id, log.foodName)
+                                  }
+                                  className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                  aria-label={`Delete ${log.foodName}`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-semibold text-sm text-foreground">
-                                {log.totalCalories} kcal
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDelete(log.id, log.foodName)
-                                }
-                                className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                                aria-label={`Delete ${log.foodName}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </motion.div>
                   )}
@@ -910,16 +1328,46 @@ export default function DietTrackerScreen() {
           </div>
         )}
 
-        {/* Daily total */}
+        {/* Daily total + macro summary */}
         {todayFoodLogs.length > 0 && (
-          <div className="rounded-2xl bg-secondary/50 border border-border px-4 py-3 flex items-center justify-between">
-            <span className="font-semibold text-sm text-foreground">
-              Daily Total
-            </span>
-            <span className="font-display font-bold text-lg text-primary">
-              {totalCalories.toLocaleString()} kcal
-            </span>
-          </div>
+          <>
+            <div className="rounded-2xl bg-secondary/50 border border-border px-4 py-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-sm text-foreground">
+                  Daily Total
+                </span>
+                <span className="font-display font-bold text-lg text-primary">
+                  {totalCalories.toLocaleString()} kcal
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-blue-500/10 px-3 py-2 text-center">
+                  <p className="font-bold text-base text-blue-500">
+                    {Math.round(dailyMacros.protein)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Protein</p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 px-3 py-2 text-center">
+                  <p className="font-bold text-base text-amber-500">
+                    {Math.round(dailyMacros.carbs)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Carbs</p>
+                </div>
+                <div className="rounded-xl bg-orange-500/10 px-3 py-2 text-center">
+                  <p className="font-bold text-base text-orange-500">
+                    {Math.round(dailyMacros.fat)}g
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Fat</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Macro Donut / Pie Chart ─────────────────────────────────── */}
+            <MacroDonutCard dailyMacros={dailyMacros} />
+
+            {/* ── Macro Bar Chart vs Goal ─────────────────────────────────── */}
+            <MacroBarCard dailyMacros={dailyMacros} />
+          </>
         )}
       </div>
 
