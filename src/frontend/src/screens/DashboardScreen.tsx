@@ -237,8 +237,8 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
                     Carbs
                   </p>
                 </div>
-                <div className="rounded-xl bg-orange-500/10 px-3 py-2.5 text-center">
-                  <p className="font-display text-xl font-bold text-orange-500">
+                <div className="rounded-xl bg-rose-600/10 px-3 py-2.5 text-center">
+                  <p className="font-display text-xl font-bold text-rose-600">
                     {Math.round(macrosToday.fat)}g
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">

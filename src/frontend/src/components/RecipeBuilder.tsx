@@ -470,7 +470,7 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
                             g
                           </span>
                           {" · "}
-                          <span className="text-orange-500/80">
+                          <span className="text-rose-600/80">
                             F{" "}
                             {Math.round(
                               ((ing.fat ?? 0) / 100) * ing.grams * 10,
@@ -570,8 +570,8 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
                   Carbs
                 </p>
               </div>
-              <div className="text-center bg-orange-500/10 rounded-xl py-2 px-1">
-                <p className="font-display text-base font-bold text-orange-500 leading-tight">
+              <div className="text-center bg-rose-600/10 rounded-xl py-2 px-1">
+                <p className="font-display text-base font-bold text-rose-600 leading-tight">
                   {Math.round(totalFat)}g
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
