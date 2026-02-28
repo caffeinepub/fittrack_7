@@ -44,11 +44,14 @@ export async function searchFoodUSDA(query: string): Promise<USDAFood[]> {
 
     for (const product of data.products || []) {
       const name = product.product_name?.trim();
-      const kcal = product.nutriments?.["energy-kcal_100g"] ?? product.nutriments?.["energy-kcal"];
+      const kcal =
+        product.nutriments?.["energy-kcal_100g"] ??
+        product.nutriments?.["energy-kcal"];
       if (!name || !kcal || kcal <= 0) continue;
 
       const rawCategory = (product.categories_tags || [])[0] || "";
-      const category = rawCategory.replace(/^(en:|fr:)/, "").replace(/-/g, " ") || "General";
+      const category =
+        rawCategory.replace(/^(en:|fr:)/, "").replace(/-/g, " ") || "General";
 
       foods.push({
         name,

@@ -6,7 +6,11 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return perm === "granted";
 }
 
-export function scheduleMealReminder(hour: number, minute: number, meal: string): ReturnType<typeof setTimeout> {
+export function scheduleMealReminder(
+  hour: number,
+  minute: number,
+  meal: string,
+): ReturnType<typeof setTimeout> {
   const now = new Date();
   const target = new Date();
   target.setHours(hour, minute, 0, 0);
@@ -41,7 +45,10 @@ export const DEFAULT_REMINDERS: MealReminder[] = [
 
 export function getReminders(): MealReminder[] {
   try {
-    return JSON.parse(localStorage.getItem("meal_reminders") || JSON.stringify(DEFAULT_REMINDERS));
+    return JSON.parse(
+      localStorage.getItem("meal_reminders") ||
+        JSON.stringify(DEFAULT_REMINDERS),
+    );
   } catch {
     return DEFAULT_REMINDERS;
   }

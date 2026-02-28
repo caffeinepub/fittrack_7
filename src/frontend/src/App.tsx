@@ -1,22 +1,27 @@
-import React, { useState, useEffect } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "./context/ThemeContext";
+import { AnimatePresence, motion } from "motion/react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { AppProvider } from "./context/AppContext";
 import { useAppContext } from "./context/AppContext";
+import { ThemeProvider } from "./context/ThemeContext";
 
-import ProfileScreen from "./screens/ProfileScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import DietTrackerScreen from "./screens/DietTrackerScreen";
-import WorkoutTrackerScreen from "./screens/WorkoutTrackerScreen";
+import ProfileScreen from "./screens/ProfileScreen";
 import ProgressScreen from "./screens/ProgressScreen";
+import WorkoutTrackerScreen from "./screens/WorkoutTrackerScreen";
 
 // Icons
-import { Home, Apple, Dumbbell, TrendingUp, UserCircle } from "lucide-react";
+import { Apple, Dumbbell, Home, TrendingUp, UserCircle } from "lucide-react";
 
 type Tab = "dashboard" | "diet" | "workout" | "progress" | "profile";
 
-const NAV_ITEMS: { id: Tab; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+const NAV_ITEMS: {
+  id: Tab;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}[] = [
   { id: "dashboard", label: "Home", icon: Home },
   { id: "diet", label: "Diet", icon: Apple },
   { id: "workout", label: "Workout", icon: Dumbbell },
@@ -59,8 +64,12 @@ function AppContent() {
             <Dumbbell size={28} className="text-primary" />
           </div>
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground text-center">FitTrack</h1>
-            <p className="text-sm text-muted-foreground text-center">Your fitness companion</p>
+            <h1 className="font-display text-2xl font-bold text-foreground text-center">
+              FitTrack
+            </h1>
+            <p className="text-sm text-muted-foreground text-center">
+              Your fitness companion
+            </p>
           </div>
           <div className="flex gap-1.5 mt-2">
             {[0, 1, 2].map((i) => (
@@ -68,7 +77,11 @@ function AppContent() {
                 key={i}
                 className="w-2 h-2 rounded-full bg-primary"
                 animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                transition={{
+                  duration: 1,
+                  repeat: Number.POSITIVE_INFINITY,
+                  delay: i * 0.2,
+                }}
               />
             ))}
           </div>
@@ -130,17 +143,25 @@ function AppContent() {
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  <div className={`relative transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
+                  <div
+                    className={`relative transition-all duration-200 ${isActive ? "scale-110" : "scale-100"}`}
+                  >
                     {isActive && (
                       <motion.div
                         layoutId="nav-indicator"
                         className="absolute inset-0 -m-2 rounded-xl bg-primary/15"
-                        transition={{ type: "spring", bounce: 0.3, duration: 0.4 }}
+                        transition={{
+                          type: "spring",
+                          bounce: 0.3,
+                          duration: 0.4,
+                        }}
                       />
                     )}
                     <Icon size={22} className="relative z-10" />
                   </div>
-                  <span className={`text-[10px] font-semibold transition-all duration-200 ${isActive ? "text-primary" : "text-muted-foreground"}`}>
+                  <span
+                    className={`text-[10px] font-semibold transition-all duration-200 ${isActive ? "text-primary" : "text-muted-foreground"}`}
+                  >
                     {item.label}
                   </span>
                 </button>

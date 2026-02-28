@@ -1,40 +1,68 @@
-import React, { useState, useEffect } from "react";
-import { motion, type Variants } from "motion/react";
-import { User, Ruler, Weight, Calendar, ChevronRight, CheckCircle, Moon, Sun, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  Bell,
+  Calendar,
+  CheckCircle,
+  ChevronRight,
+  Moon,
+  Ruler,
+  Sun,
+  Target,
+  User,
+  Weight,
+} from "lucide-react";
+import { type Variants, motion } from "motion/react";
+import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
+import type { UserProfile } from "../backend.d";
 import { useAppContext } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 import { useActor } from "../hooks/useActor";
-import { calculateBMI, getBMICategory, calculateCalorieGoal } from "../services/bmiService";
 import {
-  requestNotificationPermission,
-  scheduleMealReminder,
-  getReminders,
-  saveReminders,
+  calculateBMI,
+  calculateCalorieGoal,
+  getBMICategory,
+} from "../services/bmiService";
+import {
   type MealReminder,
+  getReminders,
+  requestNotificationPermission,
+  saveReminders,
+  scheduleMealReminder,
 } from "../services/notificationService";
-import { toast } from "sonner";
-import type { UserProfile } from "../backend.d";
 
 export default function ProfileScreen() {
-  const { profile, setProfile, refreshProfile } = useAppContext();
+  const { profile, setProfile } = useAppContext();
   const { theme, toggleTheme } = useTheme();
   const { actor } = useActor();
 
   const [name, setName] = useState(profile?.name || "");
   const [age, setAge] = useState(profile ? String(profile.age) : "");
   const [gender, setGender] = useState(profile?.gender || "");
-  const [heightCm, setHeightCm] = useState(profile ? String(profile.heightCm) : "");
-  const [weightKg, setWeightKg] = useState(profile ? String(profile.weightKg) : "");
+  const [heightCm, setHeightCm] = useState(
+    profile ? String(profile.heightCm) : "",
+  );
+  const [weightKg, setWeightKg] = useState(
+    profile ? String(profile.weightKg) : "",
+  );
   const [saving, setSaving] = useState(false);
   const [reminders, setReminders] = useState<MealReminder[]>(getReminders());
   const [notifGranted, setNotifGranted] = useState(
-    "Notification" in window && Notification.permission === "granted"
+    "Notification" in window && Notification.permission === "granted",
+  );
+  // Daily calorie goal override
+  const [calorieGoalOverride, setCalorieGoalOverride] = useState(
+    localStorage.getItem("fittrack_calorie_goal") || "",
   );
 
   // Sync form when profile changes
@@ -48,45 +76,78 @@ export default function ProfileScreen() {
     }
   }, [profile]);
 
-  const bmi = calculateBMI(parseFloat(weightKg) || 0, parseFloat(heightCm) || 0);
+  const bmi = calculateBMI(
+    Number.parseFloat(weightKg) || 0,
+    Number.parseFloat(heightCm) || 0,
+  );
   const bmiCategory = getBMICategory(bmi);
   const calorieGoal = calculateCalorieGoal(
-    parseFloat(weightKg) || 0,
-    parseFloat(heightCm) || 0,
-    parseInt(age) || 0,
-    gender
+    Number.parseFloat(weightKg) || 0,
+    Number.parseFloat(heightCm) || 0,
+    Number.parseInt(age) || 0,
+    gender,
   );
 
   const handleSave = async () => {
-    if (!name.trim()) { toast.error("Please enter your name"); return; }
-    if (!age || parseInt(age) < 1 || parseInt(age) > 120) { toast.error("Please enter a valid age"); return; }
-    if (!gender) { toast.error("Please select your gender"); return; }
-    if (!heightCm || parseFloat(heightCm) < 50 || parseFloat(heightCm) > 300) {
-      toast.error("Please enter a valid height (50–300 cm)"); return;
+    if (!name.trim()) {
+      toast.error("Please enter your name");
+      return;
     }
-    if (!weightKg || parseFloat(weightKg) < 10 || parseFloat(weightKg) > 500) {
-      toast.error("Please enter a valid weight (10–500 kg)"); return;
+    if (!age || Number.parseInt(age) < 1 || Number.parseInt(age) > 120) {
+      toast.error("Please enter a valid age");
+      return;
+    }
+    if (!gender) {
+      toast.error("Please select your gender");
+      return;
+    }
+    if (
+      !heightCm ||
+      Number.parseFloat(heightCm) < 50 ||
+      Number.parseFloat(heightCm) > 300
+    ) {
+      toast.error("Please enter a valid height (50–300 cm)");
+      return;
+    }
+    if (
+      !weightKg ||
+      Number.parseFloat(weightKg) < 10 ||
+      Number.parseFloat(weightKg) > 500
+    ) {
+      toast.error("Please enter a valid weight (10–500 kg)");
+      return;
     }
 
     setSaving(true);
     try {
       const profileData: UserProfile = {
         name: name.trim(),
-        age: BigInt(parseInt(age)),
+        age: BigInt(Number.parseInt(age)),
         gender,
-        heightCm: parseFloat(heightCm),
-        weightKg: parseFloat(weightKg),
+        heightCm: Number.parseFloat(heightCm),
+        weightKg: Number.parseFloat(weightKg),
         updatedAt: BigInt(Date.now()),
       };
 
-      if (actor) {
-        await actor.setProfile(profileData);
-      }
+      // Save to localStorage immediately (non-blocking)
       setProfile(profileData);
-      await refreshProfile();
-      toast.success("Profile saved successfully!");
-    } catch (err) {
-      toast.error("Failed to save profile. Please try again.");
+
+      // Save calorie goal override
+      const goalVal = Number.parseInt(calorieGoalOverride);
+      if (calorieGoalOverride && goalVal > 0) {
+        localStorage.setItem("fittrack_calorie_goal", String(goalVal));
+      } else {
+        localStorage.removeItem("fittrack_calorie_goal");
+      }
+
+      // Try backend async (fire and forget — don't block UI)
+      if (actor) {
+        actor.setProfile(profileData).catch(() => {
+          /* backend unavailable */
+        });
+      }
+
+      toast.success("Profile saved!");
     } finally {
       setSaving(false);
     }
@@ -103,7 +164,7 @@ export default function ProfileScreen() {
     }
 
     const updated = reminders.map((r, i) =>
-      i === index ? { ...r, enabled: !r.enabled } : r
+      i === index ? { ...r, enabled: !r.enabled } : r,
     );
     setReminders(updated);
     saveReminders(updated);
@@ -111,7 +172,9 @@ export default function ProfileScreen() {
     const reminder = updated[index];
     if (reminder.enabled) {
       scheduleMealReminder(reminder.hour, reminder.minute, reminder.meal);
-      toast.success(`${reminder.meal} reminder enabled at ${String(reminder.hour).padStart(2, "0")}:${String(reminder.minute).padStart(2, "0")}`);
+      toast.success(
+        `${reminder.meal} reminder enabled at ${String(reminder.hour).padStart(2, "0")}:${String(reminder.minute).padStart(2, "0")}`,
+      );
     } else {
       toast.info(`${reminder.meal} reminder disabled`);
     }
@@ -132,8 +195,12 @@ export default function ProfileScreen() {
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-md border-b border-border">
         <div className="px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="font-display text-xl font-bold text-foreground">Profile</h1>
-            <p className="text-xs text-muted-foreground">Your personal fitness settings</p>
+            <h1 className="font-display text-xl font-bold text-foreground">
+              Profile
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Your personal fitness settings
+            </p>
           </div>
           <button
             type="button"
@@ -159,15 +226,25 @@ export default function ProfileScreen() {
               <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-primary/5 -translate-y-4 translate-x-4" />
               <div className="relative flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Current BMI</p>
-                  <p className="font-display text-4xl font-bold text-foreground">{bmi.toFixed(1)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Daily calorie goal: ~{calorieGoal} kcal</p>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
+                    Current BMI
+                  </p>
+                  <p className="font-display text-4xl font-bold text-foreground">
+                    {bmi.toFixed(1)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Daily calorie goal: ~{calorieGoal} kcal
+                  </p>
                 </div>
                 <div className="text-right">
-                  <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${bmiCategory.bgClass} ${bmiCategory.colorClass}`}>
+                  <span
+                    className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${bmiCategory.bgClass} ${bmiCategory.colorClass}`}
+                  >
                     {bmiCategory.label}
                   </span>
-                  <p className="text-xs text-muted-foreground mt-2">BMI {bmiCategory.range}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    BMI {bmiCategory.range}
+                  </p>
                 </div>
               </div>
             </div>
@@ -175,17 +252,27 @@ export default function ProfileScreen() {
         )}
 
         {/* Personal Info */}
-        <motion.div variants={itemVariants} className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-4"
+        >
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <User size={14} className="text-primary" />
             </div>
-            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">Personal Info</h2>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Personal Info
+            </h2>
           </div>
 
           <div className="space-y-3">
             <div>
-              <Label htmlFor="name" className="text-xs font-medium text-muted-foreground mb-1.5 block">Full Name</Label>
+              <Label
+                htmlFor="name"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Full Name
+              </Label>
               <Input
                 id="name"
                 placeholder="e.g. Arjun Sharma"
@@ -197,9 +284,17 @@ export default function ProfileScreen() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="age" className="text-xs font-medium text-muted-foreground mb-1.5 block">Age</Label>
+                <Label
+                  htmlFor="age"
+                  className="text-xs font-medium text-muted-foreground mb-1.5 block"
+                >
+                  Age
+                </Label>
                 <div className="relative">
-                  <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Calendar
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  />
                   <Input
                     id="age"
                     type="number"
@@ -213,9 +308,17 @@ export default function ProfileScreen() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="gender" className="text-xs font-medium text-muted-foreground mb-1.5 block">Gender</Label>
+                <Label
+                  htmlFor="gender"
+                  className="text-xs font-medium text-muted-foreground mb-1.5 block"
+                >
+                  Gender
+                </Label>
                 <Select value={gender} onValueChange={setGender}>
-                  <SelectTrigger id="gender" className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl">
+                  <SelectTrigger
+                    id="gender"
+                    className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl"
+                  >
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -230,19 +333,32 @@ export default function ProfileScreen() {
         </motion.div>
 
         {/* Body Measurements */}
-        <motion.div variants={itemVariants} className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-4"
+        >
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center">
               <Ruler size={14} className="text-blue-500" />
             </div>
-            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">Body Measurements</h2>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Body Measurements
+            </h2>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="height" className="text-xs font-medium text-muted-foreground mb-1.5 block">Height (cm)</Label>
+              <Label
+                htmlFor="height"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Height (cm)
+              </Label>
               <div className="relative">
-                <Ruler size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Ruler
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   id="height"
                   type="number"
@@ -256,9 +372,17 @@ export default function ProfileScreen() {
               </div>
             </div>
             <div>
-              <Label htmlFor="weight" className="text-xs font-medium text-muted-foreground mb-1.5 block">Weight (kg)</Label>
+              <Label
+                htmlFor="weight"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
+                Weight (kg)
+              </Label>
               <div className="relative">
-                <Weight size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Weight
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   id="weight"
                   type="number"
@@ -301,21 +425,74 @@ export default function ProfileScreen() {
           )}
         </motion.div>
 
+        {/* Daily Calorie Goal Override */}
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-3"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-green-500/15 flex items-center justify-center">
+              <Target size={14} className="text-green-500" />
+            </div>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Calorie Goal
+            </h2>
+          </div>
+          <div>
+            <Label
+              htmlFor="calorie-goal"
+              className="text-xs font-medium text-muted-foreground mb-1.5 block"
+            >
+              Daily Calorie Goal (optional)
+            </Label>
+            <div className="relative">
+              <Input
+                id="calorie-goal"
+                type="number"
+                placeholder={`Auto: ~${calorieGoal} kcal`}
+                value={calorieGoalOverride}
+                onChange={(e) => setCalorieGoalOverride(e.target.value)}
+                className="h-11 bg-secondary/50 border-border focus:border-primary rounded-xl pr-14"
+                min={500}
+                max={9999}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                kcal
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Leave blank to use auto-calculated goal (~{calorieGoal} kcal based
+              on your stats)
+            </p>
+          </div>
+        </motion.div>
+
         {/* Meal Reminders */}
-        <motion.div variants={itemVariants} className="rounded-2xl bg-card border border-border p-4">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4"
+        >
           <div className="flex items-center gap-2 mb-4">
             <div className="w-7 h-7 rounded-lg bg-yellow-500/15 flex items-center justify-center">
               <Bell size={14} className="text-yellow-500" />
             </div>
-            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">Meal Reminders</h2>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Meal Reminders
+            </h2>
           </div>
           <div className="space-y-3">
             {reminders.map((reminder, i) => (
-              <div key={reminder.meal} className="flex items-center justify-between py-0.5">
+              <div
+                key={reminder.meal}
+                className="flex items-center justify-between py-0.5"
+              >
                 <div>
-                  <p className="font-medium text-sm text-foreground">{reminder.meal}</p>
+                  <p className="font-medium text-sm text-foreground">
+                    {reminder.meal}
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    {String(reminder.hour).padStart(2, "0")}:{String(reminder.minute).padStart(2, "0")}
+                    {String(reminder.hour).padStart(2, "0")}:
+                    {String(reminder.minute).padStart(2, "0")}
                   </p>
                 </div>
                 <Switch
@@ -351,9 +528,15 @@ export default function ProfileScreen() {
 
         {/* Profile completion indicator */}
         {profile && (
-          <motion.div variants={itemVariants} className="flex items-center gap-2 text-xs text-muted-foreground pb-2">
+          <motion.div
+            variants={itemVariants}
+            className="flex items-center gap-2 text-xs text-muted-foreground pb-2"
+          >
             <CheckCircle size={12} className="text-primary" />
-            <span>Profile set up · Last updated {new Date(Number(profile.updatedAt)).toLocaleDateString()}</span>
+            <span>
+              Profile set up · Last updated{" "}
+              {new Date(Number(profile.updatedAt)).toLocaleDateString()}
+            </span>
             <ChevronRight size={12} />
           </motion.div>
         )}

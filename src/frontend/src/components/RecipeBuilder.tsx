@@ -1,20 +1,27 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import {
-  ChefHat, Search, Plus, Trash2, X, Loader2, Save, UtensilsCrossed,
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  ChefHat,
+  Loader2,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  UtensilsCrossed,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
+import { type CustomRecipe, useAppContext } from "../context/AppContext";
 import { searchLocalFood } from "../data/foodDatabase";
 import { searchFoodUSDA } from "../services/foodApiService";
-import { useAppContext, type CustomRecipe } from "../context/AppContext";
 
 interface IngredientRow {
   name: string;
@@ -46,9 +53,9 @@ function ManualIngredientForm({
 
   const handleAdd = () => {
     const n = name.trim();
-    const k = parseFloat(kcal);
-    const g = parseFloat(grams);
-    if (!n || isNaN(k) || k <= 0 || isNaN(g) || g <= 0) return;
+    const k = Number.parseFloat(kcal);
+    const g = Number.parseFloat(grams);
+    if (!n || Number.isNaN(k) || k <= 0 || Number.isNaN(g) || g <= 0) return;
     onAdd({
       name: n,
       caloriesPer100g: k,
@@ -62,7 +69,9 @@ function ManualIngredientForm({
 
   return (
     <div className="rounded-xl bg-secondary/40 border border-border p-3 space-y-2">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Add manually</p>
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        Add manually
+      </p>
       <div className="grid grid-cols-3 gap-2">
         <Input
           placeholder="Name"
@@ -168,7 +177,12 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
     const calories = Math.round((food.caloriesPer100g / 100) * grams);
     setIngredients((prev) => [
       ...prev,
-      { name: food.name, caloriesPer100g: food.caloriesPer100g, grams, calories },
+      {
+        name: food.name,
+        caloriesPer100g: food.caloriesPer100g,
+        grams,
+        calories,
+      },
     ]);
     setQuery("");
     setResults([]);
@@ -180,13 +194,17 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
   };
 
   const handleUpdateGrams = (idx: number, newGrams: string) => {
-    const g = parseFloat(newGrams) || 0;
+    const g = Number.parseFloat(newGrams) || 0;
     setIngredients((prev) =>
       prev.map((ing, i) =>
         i === idx
-          ? { ...ing, grams: g, calories: Math.round((ing.caloriesPer100g / 100) * g) }
-          : ing
-      )
+          ? {
+              ...ing,
+              grams: g,
+              calories: Math.round((ing.caloriesPer100g / 100) * g),
+            }
+          : ing,
+      ),
     );
   };
 
@@ -197,9 +215,10 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
   // Totals
   const totalWeightG = ingredients.reduce((s, i) => s + i.grams, 0);
   const totalCalories = ingredients.reduce((s, i) => s + i.calories, 0);
-  const numServings = parseFloat(servings) || 1;
+  const numServings = Number.parseFloat(servings) || 1;
   const calPerServing = Math.round(totalCalories / numServings);
-  const calPer100g = totalWeightG > 0 ? Math.round((totalCalories / totalWeightG) * 100) : 0;
+  const calPer100g =
+    totalWeightG > 0 ? Math.round((totalCalories / totalWeightG) * 100) : 0;
 
   const handleSave = () => {
     if (!recipeName.trim()) {
@@ -232,7 +251,12 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
   };
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <SheetContent
         side="bottom"
         className="h-[92dvh] rounded-t-3xl p-0 flex flex-col bg-background border-border overflow-hidden"
@@ -263,7 +287,12 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
           {/* Recipe Name + Servings */}
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-1.5">
-              <label htmlFor="recipe-name" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recipe Name</label>
+              <label
+                htmlFor="recipe-name"
+                className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+              >
+                Recipe Name
+              </label>
               <Input
                 id="recipe-name"
                 placeholder="e.g. Dal Fry, Chicken Rice Bowl..."
@@ -273,7 +302,12 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="recipe-servings" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Servings</label>
+              <label
+                htmlFor="recipe-servings"
+                className="text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+              >
+                Servings
+              </label>
               <Input
                 id="recipe-servings"
                 type="number"
@@ -288,9 +322,14 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
 
           {/* Ingredient Search */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Search Ingredients</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Search Ingredients
+            </p>
             <div className="relative">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
               <Input
                 placeholder="Search food (Idli, Egg, Chicken...)"
                 value={query}
@@ -300,7 +339,10 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
               {query && (
                 <button
                   type="button"
-                  onClick={() => { setQuery(""); setResults([]); }}
+                  onClick={() => {
+                    setQuery("");
+                    setResults([]);
+                  }}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X size={13} />
@@ -330,12 +372,20 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
                       className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-secondary/50 transition-colors border-b border-border last:border-0 text-left"
                     >
                       <div>
-                        <p className="font-medium text-sm text-foreground">{food.name}</p>
-                        <p className="text-xs text-muted-foreground">{food.category || "General"}</p>
+                        <p className="font-medium text-sm text-foreground">
+                          {food.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {food.category || "General"}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold text-foreground">{food.caloriesPer100g}</span>
-                        <span className="text-xs text-muted-foreground">kcal/100g</span>
+                        <span className="text-sm font-semibold text-foreground">
+                          {food.caloriesPer100g}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          kcal/100g
+                        </span>
                         <Plus size={13} className="text-primary ml-1" />
                       </div>
                     </button>
@@ -365,15 +415,21 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
                     className="flex items-center gap-3 px-4 py-3 border-b border-border/60 last:border-0"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{ing.name}</p>
-                      <p className="text-xs text-muted-foreground">{ing.caloriesPer100g} kcal/100g</p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {ing.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {ing.caloriesPer100g} kcal/100g
+                      </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-1">
                         <Input
                           type="number"
                           value={ing.grams}
-                          onChange={(e) => handleUpdateGrams(idx, e.target.value)}
+                          onChange={(e) =>
+                            handleUpdateGrams(idx, e.target.value)
+                          }
                           className="w-16 h-8 text-center text-sm font-bold bg-secondary border-border rounded-lg p-1"
                           min={1}
                         />
@@ -403,8 +459,12 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
               <div className="w-14 h-14 rounded-2xl bg-primary/8 flex items-center justify-center mb-3">
                 <UtensilsCrossed size={24} className="text-primary/50" />
               </div>
-              <p className="text-sm font-medium text-muted-foreground">No ingredients yet</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Search above or enter manually</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                No ingredients yet
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Search above or enter manually
+              </p>
             </div>
           )}
         </div>
@@ -419,9 +479,16 @@ export default function RecipeBuilder({ open, onClose }: RecipeBuilderProps) {
               { label: "Per Serving", value: `${calPerServing} kcal` },
               { label: "Per 100g", value: `${calPer100g} kcal` },
             ].map(({ label, value }) => (
-              <div key={label} className="text-center bg-secondary/60 rounded-xl py-2 px-1">
-                <p className="font-display text-base font-bold text-primary leading-tight">{value}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
+              <div
+                key={label}
+                className="text-center bg-secondary/60 rounded-xl py-2 px-1"
+              >
+                <p className="font-display text-base font-bold text-primary leading-tight">
+                  {value}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                  {label}
+                </p>
               </div>
             ))}
           </div>
