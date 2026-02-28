@@ -15,17 +15,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 import type { FoodLog } from "../backend.d";
 import RecipeBuilder from "../components/RecipeBuilder";
@@ -43,11 +33,62 @@ import { searchFoodUSDA } from "../services/foodApiService";
 const MACRO_COLORS = {
   protein: "#3b82f6",
   carbs: "#f59e0b",
-  fat: "#f97316",
+  fat: "#e11d48",
 } as const;
 
 // Default macro goals
 const DEFAULT_MACRO_GOALS = { protein: 150, carbs: 250, fat: 60 };
+
+// RDA values for key micronutrients
+const MICRO_RDA: Record<string, number> = {
+  vitaminC: 65,
+  vitaminA: 900,
+  vitaminD: 15,
+  vitaminE: 15,
+  vitaminB12: 2.4,
+  folate: 400,
+  thiamine: 1.2,
+  riboflavin: 1.3,
+  niacin: 16,
+  calcium: 1000,
+  iron: 18,
+  magnesium: 400,
+  potassium: 4700,
+  sodium: 2300,
+  zinc: 11,
+  phosphorus: 700,
+};
+
+const MICRO_LABELS: Record<
+  string,
+  { label: string; unit: string; color: string }
+> = {
+  vitaminC: { label: "Vitamin C", unit: "mg", color: "#16a34a" },
+  vitaminA: { label: "Vitamin A", unit: "mcg", color: "#eab308" },
+  vitaminD: { label: "Vitamin D", unit: "mcg", color: "#84cc16" },
+  vitaminE: { label: "Vitamin E", unit: "mg", color: "#22c55e" },
+  vitaminB12: { label: "Vitamin B12", unit: "mcg", color: "#14b8a6" },
+  folate: { label: "Folate", unit: "mcg", color: "#06b6d4" },
+  thiamine: { label: "Thiamine B1", unit: "mg", color: "#3b82f6" },
+  riboflavin: { label: "Riboflavin B2", unit: "mg", color: "#8b5cf6" },
+  niacin: { label: "Niacin B3", unit: "mg", color: "#ec4899" },
+  calcium: { label: "Calcium", unit: "mg", color: "#ef4444" },
+  iron: { label: "Iron", unit: "mg", color: "#dc2626" },
+  magnesium: { label: "Magnesium", unit: "mg", color: "#7c3aed" },
+  potassium: { label: "Potassium", unit: "mg", color: "#2563eb" },
+  sodium: { label: "Sodium", unit: "mg", color: "#9ca3af" },
+  zinc: { label: "Zinc", unit: "mg", color: "#10b981" },
+  phosphorus: { label: "Phosphorus", unit: "mg", color: "#f59e0b" },
+};
+
+const KEY_MICROS = [
+  "vitaminC",
+  "iron",
+  "calcium",
+  "potassium",
+  "magnesium",
+  "zinc",
+] as const;
 
 function getMacroGoals(): { protein: number; carbs: number; fat: number } {
   try {
@@ -83,25 +124,6 @@ function MacroPieTooltip({ active, payload }: MacroPieTooltipProps) {
   );
 }
 
-interface MacroBarTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number; name: string }>;
-  label?: string;
-}
-function MacroBarTooltip({ active, payload, label }: MacroBarTooltipProps) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-lg text-xs">
-      <p className="font-semibold text-foreground mb-1">{label}</p>
-      {payload.map((p) => (
-        <p key={p.name} className="text-muted-foreground">
-          {p.value}g consumed
-        </p>
-      ))}
-    </div>
-  );
-}
-
 // Build a lookup map: food name (lowercase) -> FoodItem for quick isLiquid + macro lookups
 const FOOD_LOOKUP = new Map<string, FoodItem>();
 for (const f of FOOD_DATABASE) FOOD_LOOKUP.set(f.name.toLowerCase(), f);
@@ -117,6 +139,21 @@ function calcMacros(
     carbs: Math.round(((food.carbs ?? 0) / 100) * grams * 10) / 10,
     fat: Math.round(((food.fat ?? 0) / 100) * grams * 10) / 10,
   };
+}
+
+// Helper: calculate micros for a logged food (grams × nutrient/100)
+function calcMicros(
+  food: FoodItem | undefined,
+  grams: number,
+): Record<string, number> {
+  if (!food?.micros) return {};
+  const result: Record<string, number> = {};
+  for (const [key, val] of Object.entries(food.micros)) {
+    if (val != null) {
+      result[key] = Math.round((val / 100) * grams * 100) / 100;
+    }
+  }
+  return result;
 }
 
 // ── Macro Donut Chart Component ────────────────────────────────────────────
@@ -212,49 +249,6 @@ function MacroDonutCard({
 }
 
 // ── Macro Bar Chart vs Goal Component ──────────────────────────────────────
-interface MacroBarEntry {
-  name: string;
-  actual: number;
-  remaining: number;
-  goal: number;
-  fill: string;
-}
-
-interface MacroBarCustomLabelProps {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  value?: number;
-  index?: number;
-  barData?: MacroBarEntry[];
-}
-
-function MacroBarCustomLabel({
-  x = 0,
-  y = 0,
-  width = 0,
-  height = 0,
-  value,
-  index = 0,
-  barData = [],
-}: MacroBarCustomLabelProps) {
-  if (!value) return null;
-  const entry = barData[index];
-  if (!entry) return null;
-  return (
-    <text
-      x={x + width + 6}
-      y={y + height / 2 + 1}
-      fill="#9ca3af"
-      fontSize={10}
-      dominantBaseline="middle"
-    >
-      {entry.actual}g / {entry.goal}g
-    </text>
-  );
-}
-
 function MacroBarCard({
   dailyMacros,
 }: {
@@ -262,31 +256,29 @@ function MacroBarCard({
 }) {
   const goals = getMacroGoals();
 
-  const barData: MacroBarEntry[] = [
+  const barData = [
     {
       name: "Protein",
       actual: Math.round(dailyMacros.protein),
-      remaining: Math.max(0, goals.protein - Math.round(dailyMacros.protein)),
       goal: goals.protein,
       fill: MACRO_COLORS.protein,
+      unit: "g",
     },
     {
       name: "Carbs",
       actual: Math.round(dailyMacros.carbs),
-      remaining: Math.max(0, goals.carbs - Math.round(dailyMacros.carbs)),
       goal: goals.carbs,
       fill: MACRO_COLORS.carbs,
+      unit: "g",
     },
     {
       name: "Fat",
       actual: Math.round(dailyMacros.fat),
-      remaining: Math.max(0, goals.fat - Math.round(dailyMacros.fat)),
       goal: goals.fat,
       fill: MACRO_COLORS.fat,
+      unit: "g",
     },
   ];
-
-  const maxGoal = Math.max(...barData.map((d) => d.goal)) * 1.1;
 
   return (
     <motion.div
@@ -295,59 +287,337 @@ function MacroBarCard({
       transition={{ duration: 0.35, delay: 0.08 }}
       className="rounded-2xl bg-card border border-border p-4"
     >
-      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-3">
+      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-4">
         Daily Macros vs Goal
       </p>
-      <ResponsiveContainer width="100%" height={130}>
-        <BarChart
-          data={barData}
-          layout="vertical"
-          margin={{ top: 4, right: 80, left: 8, bottom: 4 }}
-          barSize={18}
-        >
-          <XAxis
-            type="number"
-            domain={[0, maxGoal]}
-            tick={false}
-            axisLine={false}
-            tickLine={false}
+      <div className="flex flex-col gap-3">
+        {barData.map((d) => {
+          const pct = Math.min(Math.round((d.actual / d.goal) * 100), 100);
+          const over = d.actual > d.goal;
+          return (
+            <div key={d.name}>
+              {/* Row: label + value */}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-foreground">
+                  {d.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold" style={{ color: d.fill }}>
+                    {d.actual}
+                    {d.unit}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    / {d.goal}
+                    {d.unit}
+                  </span>
+                  <span
+                    className="ml-1 font-bold"
+                    style={{ color: over ? "#f97316" : d.fill }}
+                  >
+                    ({pct}%)
+                  </span>
+                </span>
+              </div>
+              {/* Track + fill bar */}
+              <div className="relative h-4 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${pct}%`,
+                    background: over ? "#f97316" : d.fill,
+                    minWidth: d.actual > 0 ? "6px" : "0",
+                  }}
+                />
+                {/* Goal marker line at 100% */}
+                <div className="absolute right-0 top-0 h-full w-px bg-border opacity-60" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-3 text-right">
+        Orange = exceeded goal
+      </p>
+    </motion.div>
+  );
+}
+
+// ── Micro Donut Chart Component ─────────────────────────────────────────────
+function MicroDonutCard({
+  dailyMicros,
+}: { dailyMicros: Record<string, number> }) {
+  const pieData = KEY_MICROS.map((key) => {
+    const rda = MICRO_RDA[key] || 1;
+    const val = dailyMicros[key] || 0;
+    const pct = Math.min(100, Math.round((val / rda) * 100));
+    return {
+      name: MICRO_LABELS[key]?.label || key,
+      value: pct > 0 ? pct : 1,
+      fill: MICRO_LABELS[key]?.color || "#9ca3af",
+      pct,
+      unit: MICRO_LABELS[key]?.unit || "",
+      actual: val,
+    };
+  }).filter((d) => d.pct > 0);
+
+  if (pieData.length === 0) return null;
+  const avgPct = Math.round(
+    pieData.reduce((s, d) => s + d.pct, 0) / pieData.length,
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.1 }}
+      className="rounded-2xl bg-card border border-border p-4"
+    >
+      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-3">
+        Key Micros (% RDA)
+      </p>
+      <div className="relative flex justify-center">
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie
+              data={pieData}
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={80}
+              dataKey="value"
+              paddingAngle={3}
+              strokeWidth={0}
+            >
+              {pieData.map((entry) => (
+                <Cell key={entry.name} fill={entry.fill} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const d = payload[0].payload as (typeof pieData)[0];
+                return (
+                  <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-lg text-xs">
+                    <p className="font-semibold text-foreground">
+                      {d.name}:{" "}
+                      <span style={{ color: d.fill }}>{d.pct}% RDA</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      {d.actual}
+                      {d.unit}
+                    </p>
+                  </div>
+                );
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <p className="font-display text-xl font-bold text-foreground">
+            {avgPct}%
+          </p>
+          <p className="text-[10px] text-muted-foreground">avg RDA</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 mt-1">
+        {pieData.map((d) => (
+          <div key={d.name} className="flex items-center gap-1">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ background: d.fill }}
+            />
+            <span className="text-[10px] text-muted-foreground truncate">
+              {d.name} <strong className="text-foreground">{d.pct}%</strong>
+            </span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Micro Bar Chart vs RDA Component ───────────────────────────────────────
+interface MicroBarEntry {
+  name: string;
+  actual: number;
+  goal: number;
+  fill: string;
+  unit: string;
+}
+
+function MicroBarCard({
+  dailyMicros,
+}: { dailyMicros: Record<string, number> }) {
+  const barData: MicroBarEntry[] = KEY_MICROS.map((key) => {
+    const rda = MICRO_RDA[key] || 1;
+    const actual = Math.round((dailyMicros[key] || 0) * 10) / 10;
+    return {
+      name: MICRO_LABELS[key]?.label || key,
+      actual,
+      goal: rda,
+      fill: MICRO_LABELS[key]?.color || "#9ca3af",
+      unit: MICRO_LABELS[key]?.unit || "",
+    };
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.15 }}
+      className="rounded-2xl bg-card border border-border p-4"
+    >
+      <p className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-4">
+        Key Micros vs RDA
+      </p>
+      <div className="flex flex-col gap-3">
+        {barData.map((d) => {
+          const pct = Math.min(Math.round((d.actual / d.goal) * 100), 100);
+          const over = d.actual > d.goal;
+          return (
+            <div key={d.name}>
+              {/* Row: label + value */}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-foreground">
+                  {d.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold" style={{ color: d.fill }}>
+                    {d.actual}
+                    {d.unit}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    / {d.goal}
+                    {d.unit}
+                  </span>
+                  <span
+                    className="ml-1 font-bold"
+                    style={{ color: over ? "#f97316" : d.fill }}
+                  >
+                    ({pct}%)
+                  </span>
+                </span>
+              </div>
+              {/* Track + fill bar */}
+              <div className="relative h-4 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="absolute left-0 top-0 h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${pct}%`,
+                    background: over ? "#f97316" : d.fill,
+                    minWidth: d.actual > 0 ? "6px" : "0",
+                  }}
+                />
+                {/* RDA marker line at 100% */}
+                <div className="absolute right-0 top-0 h-full w-px bg-border opacity-60" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-3 text-right">
+        Orange = exceeded RDA
+      </p>
+    </motion.div>
+  );
+}
+
+// ── Micro Summary (all nutrients) Component ─────────────────────────────────
+function MicroSummaryCard({
+  dailyMicros,
+}: { dailyMicros: Record<string, number> }) {
+  const [expanded, setExpanded] = useState(false);
+  const VITAMINS = [
+    "vitaminC",
+    "vitaminA",
+    "vitaminD",
+    "vitaminE",
+    "vitaminB12",
+    "folate",
+    "thiamine",
+    "riboflavin",
+    "niacin",
+  ];
+  const MINERALS = [
+    "calcium",
+    "iron",
+    "magnesium",
+    "potassium",
+    "sodium",
+    "zinc",
+    "phosphorus",
+  ];
+
+  const renderRow = (key: string) => {
+    const info = MICRO_LABELS[key];
+    if (!info) return null;
+    const val = dailyMicros[key] || 0;
+    const rda = MICRO_RDA[key] || 1;
+    const pct = Math.min(100, Math.round((val / rda) * 100));
+    return (
+      <div key={key} className="space-y-0.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-foreground">{info.label}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {val < 1 ? val.toFixed(2) : Math.round(val)}
+            {info.unit} <span className="text-[10px]">({pct}%)</span>
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, background: info.color }}
           />
-          <YAxis
-            type="category"
-            dataKey="name"
-            tick={{ fontSize: 11, fill: "#9ca3af" }}
-            axisLine={false}
-            tickLine={false}
-            width={44}
-          />
-          <Tooltip
-            content={<MacroBarTooltip />}
-            cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          />
-          {/* Background bar showing goal */}
-          <Bar
-            dataKey="goal"
-            stackId="a"
-            fill="rgba(156,163,175,0.12)"
-            radius={[0, 6, 6, 0]}
-          >
-            {barData.map((entry) => (
-              <Cell key={entry.name} fill="rgba(156,163,175,0.12)" />
-            ))}
-          </Bar>
-          {/* Actual consumed bar (stacked on top of ghost) */}
-          <Bar
-            dataKey="actual"
-            stackId="b"
-            radius={[0, 6, 6, 0]}
-            label={<MacroBarCustomLabel barData={barData} />}
-          >
-            {barData.map((entry) => (
-              <Cell key={entry.name} fill={entry.fill} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.2 }}
+      className="rounded-2xl bg-card border border-border overflow-hidden"
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/30 transition-colors"
+      >
+        <p className="font-display font-semibold text-sm text-foreground">
+          Micronutrients Today
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            {Object.keys(dailyMicros).length} tracked
+          </span>
+          {expanded ? (
+            <ChevronUp size={14} className="text-muted-foreground" />
+          ) : (
+            <ChevronDown size={14} className="text-muted-foreground" />
+          )}
+        </div>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 space-y-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Vitamins
+            </p>
+            <div className="space-y-2">{VITAMINS.map(renderRow)}</div>
+          </div>
+          <div className="h-px bg-border" />
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Minerals
+            </p>
+            <div className="space-y-2">{MINERALS.map(renderRow)}</div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -441,6 +711,20 @@ export default function DietTrackerScreen() {
     },
     { protein: 0, carbs: 0, fat: 0 },
   );
+
+  // Daily micro totals
+  const dailyMicros = todayFoodLogs.reduce(
+    (acc, log) => {
+      const food = FOOD_LOOKUP.get(log.foodName.toLowerCase());
+      const m = calcMicros(food, log.grams);
+      for (const [key, val] of Object.entries(m)) {
+        acc[key] = (acc[key] || 0) + val;
+      }
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+  const hasMicroData = Object.keys(dailyMicros).length > 0;
 
   const doSearch = useCallback(
     async (q: string) => {
@@ -727,7 +1011,7 @@ export default function DietTrackerScreen() {
                           C {food.carbs ?? 0}g
                         </span>
                         {" · "}
-                        <span className="text-orange-500/80">
+                        <span className="text-rose-600/80">
                           F {food.fat ?? 0}g
                         </span>
                         {" per 100"}
@@ -1030,7 +1314,7 @@ export default function DietTrackerScreen() {
                               C {food.carbs}g
                             </span>
                             {" · "}
-                            <span className="text-orange-500/80">
+                            <span className="text-rose-600/80">
                               F {food.fat}g
                             </span>
                           </p>
@@ -1154,8 +1438,8 @@ export default function DietTrackerScreen() {
                     </p>
                     <p className="text-[10px] text-muted-foreground">Carbs</p>
                   </div>
-                  <div className="flex-1 rounded-xl bg-orange-500/10 px-3 py-2 text-center">
-                    <p className="font-bold text-sm text-orange-500">
+                  <div className="flex-1 rounded-xl bg-rose-600/10 px-3 py-2 text-center">
+                    <p className="font-bold text-sm text-rose-600">
                       {macroPreview.fat}g
                     </p>
                     <p className="text-[10px] text-muted-foreground">Fat</p>
@@ -1280,7 +1564,7 @@ export default function DietTrackerScreen() {
                                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
                                       C {logMacros.carbs}g
                                     </span>
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500 font-medium">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-600/10 text-rose-600 font-medium">
                                       F {logMacros.fat}g
                                     </span>
                                   </div>
@@ -1353,8 +1637,8 @@ export default function DietTrackerScreen() {
                   </p>
                   <p className="text-[10px] text-muted-foreground">Carbs</p>
                 </div>
-                <div className="rounded-xl bg-orange-500/10 px-3 py-2 text-center">
-                  <p className="font-bold text-base text-orange-500">
+                <div className="rounded-xl bg-rose-600/10 px-3 py-2 text-center">
+                  <p className="font-bold text-base text-rose-600">
                     {Math.round(dailyMacros.fat)}g
                   </p>
                   <p className="text-[10px] text-muted-foreground">Fat</p>
@@ -1367,6 +1651,15 @@ export default function DietTrackerScreen() {
 
             {/* ── Macro Bar Chart vs Goal ─────────────────────────────────── */}
             <MacroBarCard dailyMacros={dailyMacros} />
+
+            {/* ── Micro Donut Chart ─────────────────────────────────────────── */}
+            {hasMicroData && <MicroDonutCard dailyMicros={dailyMicros} />}
+
+            {/* ── Micro Bar Chart vs RDA ────────────────────────────────────── */}
+            {hasMicroData && <MicroBarCard dailyMicros={dailyMicros} />}
+
+            {/* ── Full Micro Summary (all nutrients) ───────────────────────── */}
+            {hasMicroData && <MicroSummaryCard dailyMicros={dailyMicros} />}
           </>
         )}
       </div>

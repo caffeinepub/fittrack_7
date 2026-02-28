@@ -23,6 +23,8 @@ import {
   Flame,
   LayoutTemplate,
   MoreVertical,
+  Pause,
+  Play,
   Plus,
   Search,
   Timer,
@@ -188,7 +190,7 @@ function playBeep() {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type View = "HOME" | "ACTIVE_SESSION" | "HISTORY_DETAIL";
+type View = "HOME" | "PLAN_SESSION" | "ACTIVE_SESSION" | "HISTORY_DETAIL";
 
 interface RestTimerState {
   active: boolean;
@@ -207,7 +209,7 @@ function RestTimerOverlay({
   onAdjust: (delta: number) => void;
   onSkip: () => void;
 }) {
-  const radius = 38;
+  const radius = 42;
   const circ = 2 * Math.PI * radius;
   const progress = timer.remaining / timer.total;
   const dashOffset = circ * (1 - progress);
@@ -218,79 +220,83 @@ function RestTimerOverlay({
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       transition={{ type: "spring", damping: 25 }}
-      className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-[60]"
+      className="fixed bottom-[80px] left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[360px] z-[60]"
     >
-      <div className="bg-card border border-border rounded-2xl shadow-xl p-4">
-        <div className="flex items-center gap-4">
-          {/* SVG ring */}
-          <div className="relative flex-none">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl p-4">
+        {/* Top row: label + exercise name + skip */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            REST TIMER
+          </span>
+          <span className="text-xs text-foreground font-medium truncate max-w-[120px] mx-2 text-center">
+            {timer.exerciseName}
+          </span>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="flex items-center justify-center px-3 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold hover:bg-primary/25 transition-colors flex-none"
+          >
+            Skip
+          </button>
+        </div>
+
+        {/* Centered SVG ring */}
+        <div className="flex justify-center mb-3">
+          <div className="relative">
             <svg
-              width="88"
-              height="88"
-              viewBox="0 0 88 88"
+              width="100"
+              height="100"
+              viewBox="0 0 100 100"
               role="img"
               aria-label="Rest timer progress"
             >
               <circle
-                cx="44"
-                cy="44"
+                cx="50"
+                cy="50"
                 r={radius}
                 fill="none"
                 stroke="oklch(var(--muted))"
-                strokeWidth="5"
+                strokeWidth="6"
               />
               <circle
-                cx="44"
-                cy="44"
+                cx="50"
+                cy="50"
                 r={radius}
                 fill="none"
                 stroke="oklch(var(--primary))"
-                strokeWidth="5"
+                strokeWidth="6"
                 strokeLinecap="round"
                 strokeDasharray={circ}
                 strokeDashoffset={dashOffset}
-                transform="rotate(-90 44 44)"
+                transform="rotate(-90 50 50)"
                 style={{ transition: "stroke-dashoffset 1s linear" }}
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="font-display text-xl font-bold text-foreground">
+              <span className="font-display text-2xl font-bold text-foreground">
                 {formatDuration(timer.remaining)}
               </span>
             </div>
           </div>
+        </div>
 
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              Rest Timer
-            </p>
-            <p className="font-semibold text-sm text-foreground truncate">
-              {timer.exerciseName}
-            </p>
-            <div className="flex items-center gap-2 mt-2">
-              <button
-                type="button"
-                onClick={() => onAdjust(-30)}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
-              >
-                -30
-              </button>
-              <button
-                type="button"
-                onClick={() => onAdjust(30)}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
-              >
-                +30
-              </button>
-              <button
-                type="button"
-                onClick={onSkip}
-                className="flex items-center justify-center px-3 h-8 rounded-full bg-primary/15 text-primary text-xs font-bold hover:bg-primary/25 transition-colors"
-              >
-                Skip
-              </button>
-            </div>
-          </div>
+        {/* Bottom row: -30s / +30s centered */}
+        <div className="flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={() => onAdjust(-30)}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
+          >
+            −30s
+          </button>
+          <div className="h-px w-12 bg-border" />
+          <button
+            type="button"
+            onClick={() => onAdjust(30)}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
+          >
+            +30s
+          </button>
         </div>
       </div>
     </motion.div>
@@ -457,6 +463,7 @@ function SetRow({
   onDelete,
   onToggleComplete,
   onToggleWarmup,
+  planMode = false,
 }: {
   set: ExerciseSet;
   isWarmup: boolean;
@@ -466,6 +473,7 @@ function SetRow({
   onDelete: () => void;
   onToggleComplete: () => void;
   onToggleWarmup: () => void;
+  planMode?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -475,7 +483,11 @@ function SetRow({
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0 }}
-      className={`grid grid-cols-[32px_1fr_72px_64px_44px] gap-1.5 items-center px-2 py-1.5 rounded-xl transition-colors ${
+      className={`grid gap-1.5 items-center px-2 py-1.5 rounded-xl transition-colors ${
+        planMode
+          ? "grid-cols-[32px_1fr_72px_64px_32px]"
+          : "grid-cols-[32px_1fr_72px_64px_44px]"
+      } ${
         set.completed
           ? "bg-green-500/10"
           : isWarmup
@@ -545,66 +557,111 @@ function SetRow({
         />
       </div>
 
-      {/* Complete + PR */}
-      <div className="flex items-center justify-end gap-1">
-        {isPR && set.completed && (
-          <Trophy size={10} className="text-yellow-500 flex-none" />
-        )}
-        <button
-          type="button"
-          onClick={onToggleComplete}
-          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-            set.completed
-              ? "bg-green-500 text-white"
-              : "bg-secondary border border-border text-muted-foreground hover:border-green-500/50"
-          }`}
-          aria-label={set.completed ? "Mark incomplete" : "Mark complete"}
-        >
-          <Check size={14} />
-        </button>
-
-        {/* Context menu */}
-        <div className="relative">
+      {/* Complete + PR (hidden in plan mode) / Delete button in plan mode */}
+      {planMode ? (
+        <div className="flex items-center justify-end">
+          {/* Context menu only in plan mode */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="w-6 h-9 flex items-center justify-center text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <MoreVertical size={12} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleWarmup();
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm text-left hover:bg-secondary/50 transition-colors flex items-center gap-2"
+                >
+                  <span className="text-yellow-500 text-xs font-bold w-4">
+                    W
+                  </span>
+                  {isWarmup ? "Remove Warmup" : "Mark Warmup"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete();
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm text-left hover:bg-destructive/10 text-destructive transition-colors flex items-center gap-2"
+                >
+                  <Trash2 size={12} />
+                  Delete Set
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end gap-1">
+          {isPR && set.completed && (
+            <Trophy size={10} className="text-yellow-500 flex-none" />
+          )}
           <button
             type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className="w-6 h-9 flex items-center justify-center text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            onClick={onToggleComplete}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+              set.completed
+                ? "bg-green-500 text-white"
+                : "bg-secondary border border-border text-muted-foreground hover:border-green-500/50"
+            }`}
+            aria-label={set.completed ? "Mark incomplete" : "Mark complete"}
           >
-            <MoreVertical size={12} />
+            <Check size={14} />
           </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-xl shadow-lg overflow-hidden min-w-[140px]">
-              <button
-                type="button"
-                onClick={() => {
-                  onToggleWarmup();
-                  setMenuOpen(false);
-                }}
-                className="w-full px-3 py-2.5 text-sm text-left hover:bg-secondary/50 transition-colors flex items-center gap-2"
-              >
-                <span className="text-yellow-500 text-xs font-bold w-4">W</span>
-                {isWarmup ? "Remove Warmup" : "Mark Warmup"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onDelete();
-                  setMenuOpen(false);
-                }}
-                className="w-full px-3 py-2.5 text-sm text-left hover:bg-destructive/10 text-destructive transition-colors flex items-center gap-2"
-              >
-                <Trash2 size={12} />
-                Delete Set
-              </button>
-            </div>
-          )}
+
+          {/* Context menu */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="w-6 h-9 flex items-center justify-center text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <MoreVertical size={12} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleWarmup();
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm text-left hover:bg-secondary/50 transition-colors flex items-center gap-2"
+                >
+                  <span className="text-yellow-500 text-xs font-bold w-4">
+                    W
+                  </span>
+                  {isWarmup ? "Remove Warmup" : "Mark Warmup"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete();
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm text-left hover:bg-destructive/10 text-destructive transition-colors flex items-center gap-2"
+                >
+                  <Trash2 size={12} />
+                  Delete Set
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </motion.div>
   );
 }
 
-// ─── Exercise Card (Active Session) ──────────────────────────────────────────
+// ─── Exercise Card (Active Session / Plan Mode) ──────────────────────────────
 function ExerciseCard({
   exercise,
   onUpdate,
@@ -613,6 +670,7 @@ function ExerciseCard({
   prs,
   checkAndUpdatePR,
   onRestStart,
+  planMode = false,
 }: {
   exercise: SessionExercise;
   onUpdate: (updated: SessionExercise) => void;
@@ -624,6 +682,7 @@ function ExerciseCard({
   >;
   checkAndUpdatePR: (id: string, w: number, r: number) => boolean;
   onRestStart: (exerciseName: string) => void;
+  planMode?: boolean;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const prevSessionData = useMemo(
@@ -733,7 +792,7 @@ function ExerciseCard({
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
               {exercise.equipment}
             </Badge>
-            {pr && (
+            {pr && !planMode && (
               <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-semibold flex items-center gap-0.5">
                 <Trophy size={9} />
                 PR: {pr.weightKg}kg × {pr.reps}
@@ -774,7 +833,9 @@ function ExerciseCard({
       )}
 
       {/* Column headers */}
-      <div className="grid grid-cols-[32px_1fr_72px_64px_44px] gap-1.5 px-4 pb-1">
+      <div
+        className={`grid gap-1.5 px-4 pb-1 ${planMode ? "grid-cols-[32px_1fr_72px_64px_32px]" : "grid-cols-[32px_1fr_72px_64px_44px]"}`}
+      >
         <span className="text-[10px] font-semibold text-muted-foreground uppercase text-center">
           SET
         </span>
@@ -787,9 +848,15 @@ function ExerciseCard({
         <span className="text-[10px] font-semibold text-muted-foreground uppercase text-center">
           REPS
         </span>
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase text-center">
-          ✓
-        </span>
+        {planMode ? (
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase text-center">
+            •••
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase text-center">
+            ✓
+          </span>
+        )}
       </div>
 
       {/* Sets */}
@@ -815,6 +882,7 @@ function ExerciseCard({
               onDelete={() => deleteSet(set.id)}
               onToggleComplete={() => toggleComplete(set.id)}
               onToggleWarmup={() => toggleWarmup(set.id)}
+              planMode={planMode}
             />
           ))}
         </AnimatePresence>
@@ -943,6 +1011,12 @@ export default function WorkoutTrackerScreen() {
   const [templatePreview, setTemplatePreview] =
     useState<WorkoutTemplate | null>(null);
 
+  // ── Plan session state ──────────────────────────────────────────────────────
+  const [planExercises, setPlanExercises] = useState<SessionExercise[]>([]);
+  const [planName, setPlanName] = useState("");
+  const [planEditingName, setPlanEditingName] = useState(false);
+  const planNameInputRef = useRef<HTMLInputElement>(null);
+
   // ── Active session state ────────────────────────────────────────────────────
   const [sessionName, setSessionName] = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -951,6 +1025,7 @@ export default function WorkoutTrackerScreen() {
   const [sessionStartTime, setSessionStartTime] = useState<number>(0);
   const [elapsed, setElapsed] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Focus name input when editing starts
   useEffect(() => {
@@ -958,6 +1033,13 @@ export default function WorkoutTrackerScreen() {
       nameInputRef.current.focus();
     }
   }, [editingName]);
+
+  // Focus plan name input when editing starts
+  useEffect(() => {
+    if (planEditingName && planNameInputRef.current) {
+      planNameInputRef.current.focus();
+    }
+  }, [planEditingName]);
 
   // ── Rest timer ──────────────────────────────────────────────────────────────
   const [restTimer, setRestTimer] = useState<RestTimerState>({
@@ -981,16 +1063,16 @@ export default function WorkoutTrackerScreen() {
 
   // ── Timer tick ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!timerActive) return;
+    if (!timerActive || isPaused) return;
     const interval = setInterval(() => {
       setElapsed((e) => e + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [timerActive]);
+  }, [timerActive, isPaused]);
 
   // ── Rest timer countdown ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!restTimer.active) return;
+    if (!restTimer.active || isPaused) return;
     restIntervalRef.current = setInterval(() => {
       setRestTimer((prev) => {
         if (prev.remaining <= 1) {
@@ -1004,9 +1086,9 @@ export default function WorkoutTrackerScreen() {
     return () => {
       if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     };
-  }, [restTimer.active]);
+  }, [restTimer.active, isPaused]);
 
-  // ── Start empty workout ─────────────────────────────────────────────────────
+  // ── Start workout (from plan or fresh) ─────────────────────────────────────
   const startWorkout = useCallback(
     (preloadExercises?: SessionExercise[], name?: string) => {
       const now = Date.now();
@@ -1015,6 +1097,7 @@ export default function WorkoutTrackerScreen() {
       setSessionStartTime(now);
       setElapsed(0);
       setTimerActive(true);
+      setIsPaused(false);
       setPrAchieved([]);
       setSessionNotes("");
       setView("ACTIVE_SESSION");
@@ -1022,7 +1105,17 @@ export default function WorkoutTrackerScreen() {
     [],
   );
 
-  // ── Start from template ─────────────────────────────────────────────────────
+  // ── Go to plan session (pre-fill from template or empty) ───────────────────
+  const goToPlanning = useCallback(
+    (preloadExercises: SessionExercise[], name: string) => {
+      setPlanName(name);
+      setPlanExercises(preloadExercises);
+      setView("PLAN_SESSION");
+    },
+    [],
+  );
+
+  // ── Start from template → go to plan ───────────────────────────────────────
   const startFromTemplate = useCallback(
     (templateId: string) => {
       const template = templates.find((t) => t.id === templateId);
@@ -1045,12 +1138,12 @@ export default function WorkoutTrackerScreen() {
           })),
         }),
       );
-      startWorkout(preloadExercises, template.name);
+      goToPlanning(preloadExercises, template.name);
     },
-    [templates, incrementUsage, startWorkout],
+    [templates, incrementUsage, goToPlanning],
   );
 
-  // ── Add exercise ────────────────────────────────────────────────────────────
+  // ── Add exercise (works for both plan and active session) ──────────────────
   const addExercise = useCallback(
     (ex: Exercise) => {
       addRecentExercise(ex.id);
@@ -1071,22 +1164,42 @@ export default function WorkoutTrackerScreen() {
           },
         ],
       };
-      setExercises((prev) => [...prev, newEx]);
+      if (view === "PLAN_SESSION") {
+        setPlanExercises((prev) => [...prev, newEx]);
+      } else {
+        setExercises((prev) => [...prev, newEx]);
+      }
     },
-    [addRecentExercise],
+    [addRecentExercise, view],
   );
 
-  // ── Update exercise ─────────────────────────────────────────────────────────
-  const updateExercise = useCallback((updated: SessionExercise) => {
-    setExercises((prev) =>
-      prev.map((e) => (e.id === updated.id ? updated : e)),
-    );
-  }, []);
+  // ── Update exercise (works for both plan and active session) ───────────────
+  const updateExercise = useCallback(
+    (updated: SessionExercise) => {
+      if (view === "PLAN_SESSION") {
+        setPlanExercises((prev) =>
+          prev.map((e) => (e.id === updated.id ? updated : e)),
+        );
+      } else {
+        setExercises((prev) =>
+          prev.map((e) => (e.id === updated.id ? updated : e)),
+        );
+      }
+    },
+    [view],
+  );
 
-  // ── Delete exercise ─────────────────────────────────────────────────────────
-  const deleteExercise = useCallback((id: string) => {
-    setExercises((prev) => prev.filter((e) => e.id !== id));
-  }, []);
+  // ── Delete exercise (works for both plan and active session) ───────────────
+  const deleteExercise = useCallback(
+    (id: string) => {
+      if (view === "PLAN_SESSION") {
+        setPlanExercises((prev) => prev.filter((e) => e.id !== id));
+      } else {
+        setExercises((prev) => prev.filter((e) => e.id !== id));
+      }
+    },
+    [view],
+  );
 
   // ── Handle cancel ───────────────────────────────────────────────────────────
   const handleCancelWorkout = () => {
@@ -1290,7 +1403,9 @@ export default function WorkoutTrackerScreen() {
               {/* Start Workout CTA */}
               <motion.button
                 type="button"
-                onClick={() => startWorkout()}
+                onClick={() => {
+                  goToPlanning([], getTimeBasedName());
+                }}
                 whileTap={{ scale: 0.98 }}
                 className="w-full rounded-2xl bg-primary text-primary-foreground py-4 flex items-center justify-center gap-3 font-display font-bold text-base shadow-glow"
               >
@@ -1474,6 +1589,156 @@ export default function WorkoutTrackerScreen() {
           </motion.div>
         )}
 
+        {/* ─── PLAN SESSION VIEW ────────────────────────────────────────── */}
+        {view === "PLAN_SESSION" && (
+          <motion.div
+            key="plan"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+            className="min-h-screen flex flex-col"
+          >
+            {/* Plan header */}
+            <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3 flex-none">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setView("HOME")}
+                  className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors flex-none"
+                  aria-label="Back to home"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  {planEditingName ? (
+                    <input
+                      ref={planNameInputRef}
+                      type="text"
+                      value={planName}
+                      onChange={(e) => setPlanName(e.target.value)}
+                      onBlur={() => setPlanEditingName(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") setPlanEditingName(false);
+                      }}
+                      className="w-full font-display font-bold text-base text-foreground bg-transparent border-b-2 border-primary outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPlanEditingName(true)}
+                      className="flex items-center gap-1.5 group"
+                    >
+                      <span className="font-display font-bold text-base text-foreground truncate">
+                        {planName}
+                      </span>
+                      <Edit2
+                        size={12}
+                        className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors flex-none"
+                      />
+                    </button>
+                  )}
+                </div>
+
+                {planExercises.length > 0 && (
+                  <div className="flex items-center gap-1.5 bg-primary/10 rounded-xl px-2.5 py-1.5 flex-none">
+                    <Dumbbell size={12} className="text-primary" />
+                    <span className="font-display font-bold text-xs text-primary tabular-nums">
+                      {planExercises.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Plan mode info banner */}
+              <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-primary/5 border border-primary/15 px-3 py-1.5">
+                <FileText size={12} className="text-primary flex-none" />
+                <p className="text-xs text-muted-foreground">
+                  Plan your workout, then tap{" "}
+                  <span className="text-primary font-semibold">
+                    Start Workout
+                  </span>{" "}
+                  when ready.
+                </p>
+              </div>
+            </div>
+
+            {/* Exercise list */}
+            <div className="flex-1 px-4 py-4 space-y-3 pb-28">
+              {planExercises.length === 0 && (
+                <div className="rounded-2xl bg-card border border-dashed border-border p-10 text-center">
+                  <Dumbbell
+                    size={36}
+                    className="text-muted-foreground/25 mx-auto mb-3"
+                  />
+                  <p className="font-display font-bold text-foreground mb-1">
+                    No exercises yet
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Add exercises to plan your workout
+                  </p>
+                </div>
+              )}
+
+              <AnimatePresence>
+                {planExercises.map((ex) => (
+                  <motion.div
+                    key={ex.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  >
+                    <ExerciseCard
+                      exercise={ex}
+                      onUpdate={updateExercise}
+                      onDelete={() => deleteExercise(ex.id)}
+                      onSetComplete={() => {}}
+                      prs={prs}
+                      checkAndUpdatePR={checkAndUpdatePR}
+                      onRestStart={() => {}}
+                      planMode={true}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {/* Inline Add Exercise button */}
+              <motion.button
+                type="button"
+                onClick={() => setExerciseLibraryOpen(true)}
+                whileTap={{ scale: 0.98 }}
+                className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-primary font-semibold text-sm transition-all"
+              >
+                <Plus size={16} />
+                Add Exercise
+              </motion.button>
+            </div>
+
+            {/* Start Workout sticky button */}
+            <div className="fixed bottom-[76px] left-0 right-0 px-4 z-30 pb-2">
+              <motion.button
+                type="button"
+                onClick={() => startWorkout(planExercises, planName)}
+                whileTap={{ scale: 0.98 }}
+                className="w-full max-w-[480px] mx-auto block rounded-2xl bg-green-500 text-white py-4 flex items-center justify-center gap-3 font-display font-bold text-base shadow-lg hover:bg-green-600 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Play size={18} fill="currentColor" />
+                </div>
+                Start Workout
+                {planExercises.length > 0 && (
+                  <span className="ml-1 text-white/70 font-normal text-sm">
+                    · {planExercises.length}{" "}
+                    {planExercises.length === 1 ? "exercise" : "exercises"}
+                  </span>
+                )}
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
         {/* ─── ACTIVE SESSION VIEW ───────────────────────────────────────── */}
         {view === "ACTIVE_SESSION" && (
           <motion.div
@@ -1526,18 +1791,41 @@ export default function WorkoutTrackerScreen() {
                   )}
                 </div>
 
+                {/* Pause/Resume button */}
+                <button
+                  type="button"
+                  onClick={() => setIsPaused((p) => !p)}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all flex-none ${
+                    isPaused
+                      ? "bg-green-500/15 text-green-600 dark:text-green-400 ring-1 ring-green-500/30"
+                      : "bg-secondary text-muted-foreground hover:text-foreground"
+                  }`}
+                  aria-label={isPaused ? "Resume workout" : "Pause workout"}
+                >
+                  {isPaused ? <Play size={16} /> : <Pause size={16} />}
+                </button>
+
                 {/* Timer */}
-                <div className="flex items-center gap-1.5 bg-secondary rounded-xl px-3 py-1.5 flex-none">
-                  <Timer size={12} className="text-primary" />
-                  <span className="font-display font-bold text-sm text-foreground tabular-nums">
-                    {formatDuration(elapsed)}
-                  </span>
+                <div
+                  className={`flex flex-col items-center bg-secondary rounded-xl px-2.5 py-1 flex-none transition-opacity ${isPaused ? "opacity-50" : "opacity-100"}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <Timer size={11} className="text-primary" />
+                    <span className="font-display font-bold text-sm text-foreground tabular-nums">
+                      {formatDuration(elapsed)}
+                    </span>
+                  </div>
+                  {isPaused && (
+                    <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-widest leading-none">
+                      PAUSED
+                    </span>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   onClick={handleFinishWorkout}
-                  className="h-9 px-4 rounded-xl bg-green-500 text-white font-bold text-sm hover:bg-green-600 transition-colors flex-none"
+                  className="h-9 px-3 rounded-xl bg-green-500 text-white font-bold text-sm hover:bg-green-600 transition-colors flex-none"
                 >
                   Finish
                 </button>
@@ -1645,7 +1933,7 @@ export default function WorkoutTrackerScreen() {
             </div>
 
             {/* Add Exercise FAB */}
-            <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-30 pointer-events-none">
+            <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-30 pointer-events-none">
               <div className="flex justify-center pointer-events-auto">
                 {!restTimer.active && (
                   <motion.button
@@ -2088,7 +2376,7 @@ export default function WorkoutTrackerScreen() {
               className="flex-1 rounded-xl bg-primary text-primary-foreground font-bold"
             >
               <Zap size={14} className="mr-1.5" />
-              Start Workout
+              Plan Workout
             </Button>
           </DialogFooter>
         </DialogContent>

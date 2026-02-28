@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   habits: "fittrack_habits",
   habitLogs: "fittrack_habit_logs",
   waterLogs: "fittrack_water_logs",
+  reminders: "fittrack_reminders",
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,35 @@ export interface WaterDayLog {
   date: string; // YYYY-MM-DD
   entries: WaterEntry[];
 }
+
+// ─── Reminder Types ───────────────────────────────────────────────────────────
+export interface WaterReminderSettings {
+  enabled: boolean;
+  intervalHours: number; // 1, 1.5, 2, 3
+  startHour: number; // 0-23, default 8
+  endHour: number; // 0-23, default 22
+}
+
+export interface HabitReminder {
+  habitId: string;
+  enabled: boolean;
+  time: string; // "HH:MM"
+}
+
+export interface ReminderSettings {
+  water: WaterReminderSettings;
+  habits: HabitReminder[];
+}
+
+const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
+  water: {
+    enabled: false,
+    intervalHours: 2,
+    startHour: 8,
+    endHour: 22,
+  },
+  habits: [],
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function loadJSON<T>(key: string, fallback: T): T {
@@ -160,6 +190,26 @@ export function useHabitLogs() {
     [logs],
   );
 
+  /** Returns array of 30 objects: past 30 days completion status (index 0 = 30 days ago, index 29 = today) */
+  const getLast30Days = useCallback(
+    (habitId: string): { date: string; done: boolean }[] => {
+      const result: { date: string; done: boolean }[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split("T")[0];
+        result.push({
+          date: dateStr,
+          done: logs.some(
+            (l) => l.habitId === habitId && l.date === dateStr && l.completed,
+          ),
+        });
+      }
+      return result;
+    },
+    [logs],
+  );
+
   /** Calculate streak for a habit */
   const getStreak = useCallback(
     (habitId: string): number => {
@@ -193,6 +243,7 @@ export function useHabitLogs() {
     toggleHabit,
     isCompletedToday,
     getLast7Days,
+    getLast30Days,
     getStreak,
     getTodayLogs,
   };
@@ -268,4 +319,57 @@ export function useWaterLogs() {
     removeWaterEntry,
     resetTodayWater,
   };
+}
+
+// ─── useReminderSettings ──────────────────────────────────────────────────────
+export function useReminderSettings() {
+  const [settings, setSettingsState] = useState<ReminderSettings>(() =>
+    loadJSON<ReminderSettings>(
+      STORAGE_KEYS.reminders,
+      DEFAULT_REMINDER_SETTINGS,
+    ),
+  );
+
+  const updateWaterReminder = useCallback(
+    (updates: Partial<WaterReminderSettings>) => {
+      setSettingsState((prev) => {
+        const updated: ReminderSettings = {
+          ...prev,
+          water: { ...prev.water, ...updates },
+        };
+        saveJSON(STORAGE_KEYS.reminders, updated);
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const setHabitReminder = useCallback(
+    (habitId: string, reminder: Omit<HabitReminder, "habitId">) => {
+      setSettingsState((prev) => {
+        const existing = prev.habits.findIndex((h) => h.habitId === habitId);
+        let updatedHabits: HabitReminder[];
+        if (existing >= 0) {
+          updatedHabits = prev.habits.map((h, i) =>
+            i === existing ? { ...h, ...reminder, habitId } : h,
+          );
+        } else {
+          updatedHabits = [...prev.habits, { habitId, ...reminder }];
+        }
+        const updated: ReminderSettings = { ...prev, habits: updatedHabits };
+        saveJSON(STORAGE_KEYS.reminders, updated);
+        return updated;
+      });
+    },
+    [],
+  );
+
+  const getHabitReminder = useCallback(
+    (habitId: string): HabitReminder | undefined => {
+      return settings.habits.find((h) => h.habitId === habitId);
+    },
+    [settings],
+  );
+
+  return { settings, updateWaterReminder, setHabitReminder, getHabitReminder };
 }
