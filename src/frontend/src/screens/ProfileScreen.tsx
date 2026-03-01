@@ -11,9 +11,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   Bell,
+  BellRing,
   Calendar,
   CheckCircle,
   ChevronRight,
+  Droplets,
   Moon,
   Ruler,
   Sun,
@@ -22,13 +24,14 @@ import {
   Utensils,
   Weight,
 } from "lucide-react";
-import { type Variants, motion } from "motion/react";
-import React, { useState, useEffect } from "react";
+import { AnimatePresence, type Variants, motion } from "motion/react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import type { UserProfile } from "../backend.d";
 import { useAppContext } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 import { useActor } from "../hooks/useActor";
+import { useHabits, useReminderSettings } from "../hooks/useHabitStorage";
 import {
   calculateBMI,
   calculateCalorieGoal,
@@ -41,6 +44,332 @@ import {
   saveReminders,
   scheduleMealReminder,
 } from "../services/notificationService";
+import {
+  cancelHabitReminder,
+  cancelWaterReminders,
+  scheduleHabitReminder,
+  scheduleWaterReminders,
+} from "../utils/swNotifications";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 6); // 6am–10pm
+const INTERVAL_OPTIONS = [1, 1.5, 2, 3];
+
+// ─── Water Reminder Panel (inline for Profile) ────────────────────────────────
+function WaterReminderProfilePanel({ goalMl }: { goalMl: number }) {
+  const { settings, updateWaterReminder } = useReminderSettings();
+  const water = settings.water;
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [nextReminderStr, setNextReminderStr] = useState<string>("");
+
+  const calcNextReminder = useCallback(() => {
+    const now = new Date();
+    const nowHour = now.getHours();
+    const nowMin = now.getMinutes();
+    const intervalMin = water.intervalHours * 60;
+    if (!water.enabled) return "";
+    if (nowHour >= water.endHour) return "Resumes tomorrow";
+    if (nowHour < water.startHour)
+      return `Starts at ${String(water.startHour).padStart(2, "0")}:00`;
+    const totalMinutes = nowHour * 60 + nowMin;
+    const startMinutes = water.startHour * 60;
+    const elapsed = totalMinutes - startMinutes;
+    const nextOffset = intervalMin - (elapsed % intervalMin);
+    const nextTotal = totalMinutes + nextOffset;
+    const nextH = Math.floor(nextTotal / 60);
+    const nextM = nextTotal % 60;
+    if (nextH >= water.endHour) return "No more reminders today";
+    return `${String(nextH).padStart(2, "0")}:${String(nextM).padStart(2, "0")}`;
+  }, [water]);
+
+  useEffect(() => {
+    setNextReminderStr(calcNextReminder());
+    const tick = setInterval(
+      () => setNextReminderStr(calcNextReminder()),
+      30000,
+    );
+    return () => clearInterval(tick);
+  }, [calcNextReminder]);
+
+  // Sync SW reminders whenever settings change
+  useEffect(() => {
+    if (
+      water.enabled &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      scheduleWaterReminders({
+        intervalHours: water.intervalHours,
+        startHour: water.startHour,
+        endHour: water.endHour,
+        goalL: Number.parseFloat((goalMl / 1000).toFixed(1)),
+      });
+    } else {
+      cancelWaterReminders();
+    }
+  }, [
+    water.enabled,
+    water.intervalHours,
+    water.startHour,
+    water.endHour,
+    goalMl,
+  ]);
+
+  // In-page fallback interval
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (!water.enabled) return;
+    const fireNotification = () => {
+      const h = new Date().getHours();
+      if (h < water.startHour || h >= water.endHour) return;
+      toast("💧 Time to drink water!", {
+        description: `Daily goal: ${(goalMl / 1000).toFixed(1)}L`,
+        duration: 5000,
+      });
+    };
+    intervalRef.current = setInterval(
+      fireNotification,
+      water.intervalHours * 60 * 60 * 1000,
+    );
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [
+    water.enabled,
+    water.intervalHours,
+    water.startHour,
+    water.endHour,
+    goalMl,
+  ]);
+
+  const handleToggle = async (on: boolean) => {
+    if (on && "Notification" in window) {
+      const perm = await Notification.requestPermission();
+      if (perm === "denied") {
+        toast.error("Notifications blocked — enable them in browser settings");
+        return;
+      }
+    }
+    updateWaterReminder({ enabled: on });
+    if (on) {
+      toast.success(
+        "Water reminders enabled — works even when browser is closed",
+      );
+    } else {
+      cancelWaterReminders();
+      toast.success("Water reminders disabled");
+    }
+  };
+
+  const notifBlocked =
+    "Notification" in window && Notification.permission === "denied";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold text-foreground">
+          Water Reminders
+        </Label>
+        <Switch checked={water.enabled} onCheckedChange={handleToggle} />
+      </div>
+
+      <AnimatePresence>
+        {water.enabled && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="space-y-3 overflow-hidden"
+          >
+            {/* Interval */}
+            <div>
+              <Label className="text-[10px] text-muted-foreground uppercase font-semibold mb-1.5 block">
+                Remind Every
+              </Label>
+              <div className="flex gap-1.5">
+                {INTERVAL_OPTIONS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => updateWaterReminder({ intervalHours: h })}
+                    className={`flex-1 h-8 rounded-lg text-xs font-semibold transition-all ${
+                      water.intervalHours === h
+                        ? "bg-blue-500 text-white"
+                        : "bg-secondary border border-border text-muted-foreground hover:border-blue-500/50"
+                    }`}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Start / End hours */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Label className="text-[10px] text-muted-foreground uppercase font-semibold mb-1 block">
+                  From
+                </Label>
+                <select
+                  value={water.startHour}
+                  onChange={(e) =>
+                    updateWaterReminder({ startHour: Number(e.target.value) })
+                  }
+                  className="w-full h-8 rounded-lg bg-secondary/50 border border-border text-sm px-2 text-foreground"
+                >
+                  {HOUR_OPTIONS.map((h) => (
+                    <option key={h} value={h}>
+                      {String(h).padStart(2, "0")}:00
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <Label className="text-[10px] text-muted-foreground uppercase font-semibold mb-1 block">
+                  Until
+                </Label>
+                <select
+                  value={water.endHour}
+                  onChange={(e) =>
+                    updateWaterReminder({ endHour: Number(e.target.value) })
+                  }
+                  className="w-full h-8 rounded-lg bg-secondary/50 border border-border text-sm px-2 text-foreground"
+                >
+                  {HOUR_OPTIONS.map((h) => (
+                    <option key={h} value={h}>
+                      {String(h).padStart(2, "0")}:00
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Status badge */}
+            <div
+              className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                notifBlocked
+                  ? "bg-destructive/10 text-destructive border border-destructive/20"
+                  : "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+              }`}
+            >
+              {notifBlocked
+                ? "🔕 Notifications blocked — enable in browser settings"
+                : nextReminderStr
+                  ? `⏰ Next reminder at ${nextReminderStr} — works when browser is closed`
+                  : "Active — reminders scheduled (works when browser is closed)"}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Habit Reminders Panel (inline for Profile) ───────────────────────────────
+function HabitRemindersProfilePanel() {
+  const { habits } = useHabits();
+  const { settings, setHabitReminder, getHabitReminder } =
+    useReminderSettings();
+
+  const handleToggle = async (habitId: string, on: boolean) => {
+    const habit = habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    if (on && "Notification" in window) {
+      const perm = await Notification.requestPermission();
+      if (perm === "denied") {
+        toast.error("Notifications blocked — enable them in browser settings");
+        return;
+      }
+    }
+
+    const existing = getHabitReminder(habitId);
+    const time = existing?.time ?? "08:00";
+
+    setHabitReminder(habitId, { enabled: on, time });
+
+    if (on) {
+      scheduleHabitReminder({
+        habitId,
+        habitName: habit.name,
+        habitEmoji: habit.icon,
+        reminderTime: time,
+      });
+      toast.success(`"${habit.name}" reminder set for ${time}`);
+    } else {
+      cancelHabitReminder(habitId);
+      toast.info(`"${habit.name}" reminder disabled`);
+    }
+  };
+
+  const handleTimeChange = (habitId: string, time: string) => {
+    const habit = habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    const existing = getHabitReminder(habitId);
+    const isEnabled = existing?.enabled ?? false;
+
+    setHabitReminder(habitId, { enabled: isEnabled, time });
+
+    if (isEnabled) {
+      scheduleHabitReminder({
+        habitId,
+        habitName: habit.name,
+        habitEmoji: habit.icon,
+        reminderTime: time,
+      });
+    }
+  };
+
+  if (habits.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground py-1">
+        Add habits in the Habits tab to set reminders here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {habits.map((habit) => {
+        const reminder = settings.habits.find((r) => r.habitId === habit.id);
+        const isEnabled = reminder?.enabled ?? false;
+        const time = reminder?.time ?? "08:00";
+
+        return (
+          <div
+            key={habit.id}
+            className="flex items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-lg flex-shrink-0">{habit.icon}</span>
+              <span className="text-sm font-medium text-foreground truncate">
+                {habit.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => handleTimeChange(habit.id, e.target.value)}
+                disabled={!isEnabled}
+                className="h-8 rounded-lg bg-secondary/50 border border-border text-xs px-2 text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+              <Switch
+                checked={isEnabled}
+                onCheckedChange={(on) => handleToggle(habit.id, on)}
+                aria-label={`Toggle reminder for ${habit.name}`}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function getStoredMacroGoals() {
   try {
@@ -591,6 +920,56 @@ export default function ProfileScreen() {
           <p className="text-xs text-muted-foreground mt-1">
             Used in Diet Tracker macro progress bars
           </p>
+        </motion.div>
+
+        {/* Water Reminders */}
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-3"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center">
+              <Droplets size={14} className="text-blue-500" />
+            </div>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Water Reminders
+            </h2>
+          </div>
+          <WaterReminderProfilePanel
+            goalMl={Math.round(
+              Math.max(
+                1500,
+                Math.min(
+                  4000,
+                  (() => {
+                    const w = Number.parseFloat(weightKg) || 70;
+                    const h = Number.parseFloat(heightCm) || 170;
+                    const bmiVal = h > 0 ? w / ((h / 100) * (h / 100)) : 22;
+                    let g = w * 35;
+                    if (bmiVal > 25) g *= 1.1;
+                    else if (bmiVal < 18.5) g *= 0.95;
+                    return g;
+                  })(),
+                ),
+              ),
+            )}
+          />
+        </motion.div>
+
+        {/* Habit Reminders */}
+        <motion.div
+          variants={itemVariants}
+          className="rounded-2xl bg-card border border-border p-4 space-y-3"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
+              <BellRing size={14} className="text-primary" />
+            </div>
+            <h2 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider">
+              Habit Reminders
+            </h2>
+          </div>
+          <HabitRemindersProfilePanel />
         </motion.div>
 
         {/* Meal Reminders */}
