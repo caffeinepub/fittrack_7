@@ -41,6 +41,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { WorkoutLog } from "../backend.d";
 import { useAppContext } from "../context/AppContext";
@@ -214,13 +215,21 @@ function RestTimerOverlay({
   const progress = timer.remaining / timer.total;
   const dashOffset = circ * (1 - progress);
 
-  return (
+  const content = (
     <motion.div
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       transition={{ type: "spring", damping: 25 }}
-      className="fixed bottom-[80px] left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[360px] z-[60]"
+      style={{
+        position: "fixed",
+        bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "calc(100vw - 2rem)",
+        maxWidth: "360px",
+        zIndex: 9999,
+      }}
     >
       <div className="bg-card border border-border rounded-2xl shadow-2xl p-4">
         {/* Top row: label + exercise name + skip */}
@@ -301,6 +310,8 @@ function RestTimerOverlay({
       </div>
     </motion.div>
   );
+
+  return createPortal(content, document.body);
 }
 
 // ─── Exercise Library Modal ────────────────────────────────────────────────────

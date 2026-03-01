@@ -33,6 +33,12 @@ import {
   useReminderSettings,
   useWaterLogs,
 } from "../hooks/useHabitStorage";
+import {
+  cancelHabitReminder,
+  cancelWaterReminders,
+  scheduleHabitReminder,
+  scheduleWaterReminders,
+} from "../utils/swNotifications";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRESET_HABITS = [
@@ -200,9 +206,13 @@ function HabitHeatmap({
 // ─── Habit Reminder Panel ─────────────────────────────────────────────────────
 function HabitReminderPanel({
   habitId,
+  habitName,
+  habitEmoji,
   onClose,
 }: {
   habitId: string;
+  habitName: string;
+  habitEmoji: string;
   onClose: () => void;
 }) {
   const { getHabitReminder, setHabitReminder } = useReminderSettings();
@@ -210,12 +220,29 @@ function HabitReminderPanel({
   const [enabled, setEnabled] = useState(existing?.enabled ?? false);
   const [time, setTime] = useState(existing?.time ?? "08:00");
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (enabled && "Notification" in window) {
-      Notification.requestPermission();
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        toast.error("Notifications blocked — enable them in browser settings");
+        return;
+      }
     }
     setHabitReminder(habitId, { enabled, time });
-    toast.success(enabled ? `Reminder set for ${time}` : "Reminder disabled");
+    if (enabled) {
+      scheduleHabitReminder({
+        habitId,
+        habitName,
+        habitEmoji,
+        reminderTime: time,
+      });
+      toast.success(
+        `Reminder set for ${time} — works even when browser is closed`,
+      );
+    } else {
+      cancelHabitReminder(habitId);
+      toast.success("Reminder disabled");
+    }
     onClose();
   };
 
@@ -423,6 +450,8 @@ function HabitCard({
         {showReminder && !confirmDelete && (
           <HabitReminderPanel
             habitId={habit.id}
+            habitName={habit.name}
+            habitEmoji={habit.icon}
             onClose={() => setShowReminder(false)}
           />
         )}
@@ -471,7 +500,31 @@ function WaterReminderPanel({ goalMl }: { goalMl: number }) {
     return () => clearInterval(tick);
   }, [calcNextReminder]);
 
-  // Notification interval
+  // Sync SW reminders whenever water settings change
+  useEffect(() => {
+    if (
+      water.enabled &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      scheduleWaterReminders({
+        intervalHours: water.intervalHours,
+        startHour: water.startHour,
+        endHour: water.endHour,
+        goalL: Number.parseFloat((goalMl / 1000).toFixed(1)),
+      });
+    } else {
+      cancelWaterReminders();
+    }
+  }, [
+    water.enabled,
+    water.intervalHours,
+    water.startHour,
+    water.endHour,
+    goalMl,
+  ]);
+
+  // In-page fallback interval (fires when tab IS open)
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -484,17 +537,10 @@ function WaterReminderPanel({ goalMl }: { goalMl: number }) {
       const now = new Date();
       const h = now.getHours();
       if (h < water.startHour || h >= water.endHour) return;
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("💧 Water Reminder", {
-          body: `Stay hydrated! Your daily goal is ${(goalMl / 1000).toFixed(1)}L`,
-          icon: "/favicon.ico",
-        });
-      } else {
-        toast("💧 Time to drink water!", {
-          description: `Daily goal: ${(goalMl / 1000).toFixed(1)}L`,
-          duration: 5000,
-        });
-      }
+      toast("💧 Time to drink water!", {
+        description: `Daily goal: ${(goalMl / 1000).toFixed(1)}L`,
+        duration: 5000,
+      });
     };
 
     intervalRef.current = setInterval(
@@ -521,7 +567,14 @@ function WaterReminderPanel({ goalMl }: { goalMl: number }) {
       }
     }
     updateWaterReminder({ enabled: on });
-    toast.success(on ? "Water reminders enabled" : "Water reminders disabled");
+    if (on) {
+      toast.success(
+        "Water reminders enabled — you'll be notified even when the browser is closed",
+      );
+    } else {
+      cancelWaterReminders();
+      toast.success("Water reminders disabled");
+    }
   };
 
   const notifBlocked =
@@ -626,8 +679,8 @@ function WaterReminderPanel({ goalMl }: { goalMl: number }) {
               {notifBlocked
                 ? "🔕 Notifications blocked — enable in browser settings"
                 : nextReminderStr
-                  ? `⏰ Next reminder at ${nextReminderStr}`
-                  : "Active — reminders scheduled"}
+                  ? `⏰ Next reminder at ${nextReminderStr} — works when browser is closed`
+                  : "Active — reminders scheduled (works when browser is closed)"}
             </div>
           </motion.div>
         )}
