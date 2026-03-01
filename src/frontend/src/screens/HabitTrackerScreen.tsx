@@ -221,6 +221,22 @@ function HabitReminderPanel({
   const [time, setTime] = useState(existing?.time ?? "08:00");
 
   const handleSave = async () => {
+    // Validate time format
+    if (enabled) {
+      const parts = time.split(":");
+      if (
+        parts.length !== 2 ||
+        Number.isNaN(Number(parts[0])) ||
+        Number.isNaN(Number(parts[1])) ||
+        Number(parts[0]) < 0 ||
+        Number(parts[0]) > 23 ||
+        Number(parts[1]) < 0 ||
+        Number(parts[1]) > 59
+      ) {
+        toast.error("Invalid time — use HH:MM format (e.g. 10:30)");
+        return;
+      }
+    }
     if (enabled && "Notification" in window) {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
@@ -228,16 +244,19 @@ function HabitReminderPanel({
         return;
       }
     }
-    setHabitReminder(habitId, { enabled, time });
+    // Normalise time to HH:MM
+    const [hh, mm] = time.split(":").map((p) => p.padStart(2, "0"));
+    const normTime = `${hh}:${mm}`;
+    setHabitReminder(habitId, { enabled, time: normTime });
     if (enabled) {
       scheduleHabitReminder({
         habitId,
         habitName,
         habitEmoji,
-        reminderTime: time,
+        reminderTime: normTime,
       });
       toast.success(
-        `Reminder set for ${time} — works even when browser is closed`,
+        `Reminder set for ${normTime} — install as PWA for background notifications`,
       );
     } else {
       cancelHabitReminder(habitId);
@@ -275,19 +294,18 @@ function HabitReminderPanel({
             className="space-y-1"
           >
             <Label className="text-[10px] text-muted-foreground uppercase font-semibold">
-              Time
+              Reminder Time
             </Label>
-            <select
+            {/* Native time input — supports any HH:MM on mobile keyboard */}
+            <input
+              type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              className="w-full h-9 rounded-lg bg-background border border-border text-sm px-2 text-foreground"
-            >
-              {TIME_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              className="w-full h-9 rounded-lg bg-background border border-border text-sm px-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              You can enter any time, e.g. 10:30
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

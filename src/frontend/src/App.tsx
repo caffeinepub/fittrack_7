@@ -206,10 +206,16 @@ export default function App() {
     <ThemeProvider>
       <AppProvider>
         <div className="w-full min-h-screen flex justify-center bg-background">
-          <div className="w-full max-w-[480px] min-h-screen relative overflow-hidden">
+          {/* overflow-hidden is intentionally NOT on this wrapper so that
+              fixed-position portals (rest timer, overlays) are not clipped
+              on iOS Safari / mobile WebKit */}
+          <div className="w-full max-w-[480px] min-h-screen relative">
             <AppContent />
             <Toaster richColors position="top-center" />
           </div>
+          {/* Portal root for fixed overlays — lives outside the max-width
+              container so overflow clipping can never affect it */}
+          <div id="portal-root" />
         </div>
       </AppProvider>
     </ThemeProvider>

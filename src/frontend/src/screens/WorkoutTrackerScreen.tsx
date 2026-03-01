@@ -215,29 +215,47 @@ function RestTimerOverlay({
   const progress = timer.remaining / timer.total;
   const dashOffset = circ * (1 - progress);
 
+  // Use dedicated portal-root element (outside overflow-hidden containers)
+  // so the timer is never clipped on iOS Safari / mobile WebKit.
+  // Fall back to document.body if the element hasn't mounted yet.
+  const portalTarget =
+    typeof document !== "undefined"
+      ? (document.getElementById("portal-root") ?? document.body)
+      : null;
+
+  if (!portalTarget) return null;
+
   const content = (
     <motion.div
-      initial={{ y: 100, opacity: 0 }}
+      initial={{ y: 80, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 100, opacity: 0 }}
-      transition={{ type: "spring", damping: 25 }}
+      exit={{ y: 80, opacity: 0 }}
+      transition={{ type: "spring", damping: 28, stiffness: 260 }}
       style={{
         position: "fixed",
-        bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "calc(100vw - 2rem)",
-        maxWidth: "360px",
-        zIndex: 9999,
+        // Sit above the nav bar (≈64px) plus safe-area inset + 8px gap
+        bottom: "calc(72px + env(safe-area-inset-bottom, 0px) + 8px)",
+        // Center horizontally in the viewport, constrained to viewport width
+        left: 0,
+        right: 0,
+        marginLeft: "auto",
+        marginRight: "auto",
+        width: "min(calc(100vw - 32px), 360px)",
+        zIndex: 10000,
+        // Prevent any accidental overflow clipping
+        overflow: "visible",
       }}
     >
-      <div className="bg-card border border-border rounded-2xl shadow-2xl p-4">
+      <div
+        className="bg-card border border-border rounded-2xl shadow-2xl p-4"
+        style={{ width: "100%" }}
+      >
         {/* Top row: label + exercise name + skip */}
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
             REST TIMER
           </span>
-          <span className="text-xs text-foreground font-medium truncate max-w-[120px] mx-2 text-center">
+          <span className="text-xs text-foreground font-medium truncate mx-2 text-center flex-1">
             {timer.exerciseName}
           </span>
           <button
@@ -251,7 +269,10 @@ function RestTimerOverlay({
 
         {/* Centered SVG ring */}
         <div className="flex justify-center mb-3">
-          <div className="relative">
+          <div
+            className="relative flex-none"
+            style={{ width: 100, height: 100 }}
+          >
             <svg
               width="100"
               height="100"
@@ -294,15 +315,15 @@ function RestTimerOverlay({
           <button
             type="button"
             onClick={() => onAdjust(-30)}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
+            className="flex items-center justify-center w-12 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
           >
             −30s
           </button>
-          <div className="h-px w-12 bg-border" />
+          <div className="h-px w-10 bg-border flex-none" />
           <button
             type="button"
             onClick={() => onAdjust(30)}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
+            className="flex items-center justify-center w-12 h-10 rounded-full bg-secondary text-muted-foreground text-xs font-bold hover:bg-secondary/70 transition-colors"
           >
             +30s
           </button>
@@ -311,7 +332,7 @@ function RestTimerOverlay({
     </motion.div>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(content, portalTarget);
 }
 
 // ─── Exercise Library Modal ────────────────────────────────────────────────────
